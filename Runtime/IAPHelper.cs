@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -49,7 +49,35 @@ namespace Wagenheimer.IAPHelper
 
         [Header("Settings")]
         public bool initializeOnStart = true;
+
+        /// <summary>
+        /// Se habilitado, chama <see cref="FetchPurchases"/> automaticamente logo após conectar à loja.
+        /// <para><b>Android (Google Play / Amazon):</b> Altamente recomendado <c>true</c> (ou use <see cref="RecommendedAutoRestoreForCurrentPlatform"/>).
+        /// A consulta é silenciosa e sem prompt de senha, garantindo que compras não-consumíveis (ex: Unlock Game) sejam
+        /// restauradas automaticamente ao reinstalar o jogo ou trocar de aparelho, substituindo o antigo fluxo do IAPListener.</para>
+        /// <para><b>iOS / macOS (Apple):</b> Recomendado <c>false</c>. As diretrizes da Apple (App Store Review Guidelines)
+        /// exigem que a restauração de compras seja acionada por ação explícita do usuário (ex: botão 'Restaurar Compras')
+        /// para evitar solicitações inesperadas de autenticação do Apple ID na inicialização.</para>
+        /// </summary>
+        [Tooltip("Restaura compras automaticamente ao conectar. Recomendado TRUE no Android/Amazon e FALSE no iOS/macOS (Apple).")]
         public bool autoRestorePurchases = false;
+
+        /// <summary>
+        /// Retorna a configuração recomendada de autoRestorePurchases para a plataforma atual:
+        /// <c>true</c> para Android/Amazon (silencioso e obrigatório para restaurar ao reinstalar),
+        /// <c>false</c> para iOS/macOS (requer botão manual pela política da Apple).
+        /// </summary>
+        public static bool RecommendedAutoRestoreForCurrentPlatform =>
+            Application.platform == RuntimePlatform.Android;
+
+        /// <summary>
+        /// Ajusta <see cref="autoRestorePurchases"/> automaticamente com base na plataforma de execução.
+        /// </summary>
+        public void ConfigureAutoRestoreByPlatform()
+        {
+            autoRestorePurchases = RecommendedAutoRestoreForCurrentPlatform;
+        }
+
         public bool processPendingOnFetch = true;
         public bool logPurchasesFetchFailures = false;
 
