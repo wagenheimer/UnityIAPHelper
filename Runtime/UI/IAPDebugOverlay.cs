@@ -8,8 +8,8 @@ namespace Wagenheimer.IAPHelper.UI
 {
     /// <summary>
     /// In-game runtime debug overlay for testing multi-product IAP flows.
-    /// Provides real-time store inspection, simulated purchase/restore triggers,
-    /// and entitlement clearing in Development Builds and Unity Editor.
+    /// Provides real-time store inspection, entitlement state, simulated revoke/restore triggers,
+    /// and an event log in Development Builds and Unity Editor.
     /// </summary>
     [AddComponentMenu("Wagenheimer/IAP Helper/IAP Debug Overlay")]
     [DisallowMultipleComponent]
@@ -32,9 +32,12 @@ namespace Wagenheimer.IAPHelper.UI
         #region Private Fields
 
         private bool _isOpen;
-        private Rect _windowRect = new Rect(10, 10, 480, 520);
+        private Rect _windowRect = new Rect(10, 10, 520, 580);
         private Vector2 _scrollPos;
-        private string _statusLog = "Ready.";
+
+        // Event log
+        private readonly List<string> _eventLog = new List<string>();
+        private const int MaxLogLines = 12;
 
         #endregion
 
@@ -51,12 +54,32 @@ namespace Wagenheimer.IAPHelper.UI
             DontDestroyOnLoad(gameObject);
         }
 
+        private void OnEnable()
+        {
+            if (IAPHelper.Instance != null)
+            {
+                IAPHelper.Instance.OnEntitlementGranted   += OnGranted;
+                IAPHelper.Instance.OnEntitlementRevoked   += OnRevoked;
+                IAPHelper.Instance.OnPurchasesFetched     += OnRestored;
+                IAPHelper.Instance.OnConnectionFailed     += OnConnFailed;
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (IAPHelper.Instance != null)
+            {
+                IAPHelper.Instance.OnEntitlementGranted   -= OnGranted;
+                IAPHelper.Instance.OnEntitlementRevoked   -= OnRevoked;
+                IAPHelper.Instance.OnPurchasesFetched     -= OnRestored;
+                IAPHelper.Instance.OnConnectionFailed     -= OnConnFailed;
+            }
+        }
+
         private void Update()
         {
             if (Input.GetKeyDown(toggleKey))
-            {
                 _isOpen = !_isOpen;
-            }
         }
 
         private void OnGUI()
@@ -64,21 +87,34 @@ namespace Wagenheimer.IAPHelper.UI
             if (!Debug.isDebugBuild && !Application.isEditor && !enableInReleaseBuilds)
                 return;
 
-            var prevSkin = GUI.skin;
             GUI.depth = -9999;
 
             if (showFloatingButton && !_isOpen)
             {
-                if (GUI.Button(new Rect(10, Screen.height - 40, 90, 30), "IAP DBG"))
-                {
+                if (GUI.Button(new Rect(5, Screen.height - 40, 90, 30), "IAP DBG"))
                     _isOpen = true;
-                }
             }
 
             if (_isOpen)
             {
-                _windowRect = GUI.Window(888123, _windowRect, DrawDebugWindow, "IAP Helper - In-Game Debug Panel");
+                _windowRect = GUI.Window(888123, _windowRect, DrawDebugWindow, "IAP Helper — Debug Panel");
             }
+        }
+
+        #endregion
+
+        #region Event Handlers
+
+        private void OnGranted(string id)       => Log($"<color=lime>GRANTED</color>: {id}");
+        private void OnRevoked(string id)       => Log($"<color=red>REVOKED</color>: {id}");
+        private void OnRestored(Orders _)       => Log($"<color=cyan>FETCH PURCHASES</color> completed");
+        private void OnConnFailed(string msg)   => Log($"<color=red>CONN FAILED</color>: {msg}");
+
+        private void Log(string msg)
+        {
+            _eventLog.Add($"[{DateTime.Now:HH:mm:ss}] {msg}");
+            if (_eventLog.Count > MaxLogLines)
+                _eventLog.RemoveAt(0);
         }
 
         #endregion
@@ -87,100 +123,136 @@ namespace Wagenheimer.IAPHelper.UI
 
         private void DrawDebugWindow(int windowId)
         {
-            GUI.DragWindow(new Rect(0, 0, 420, 25));
+            GUI.DragWindow(new Rect(0, 0, _windowRect.width - 60, 22));
 
-            if (GUI.Button(new Rect(_windowRect.width - 55, 4, 50, 20), "Close"))
+            if (GUI.Button(new Rect(_windowRect.width - 55, 3, 50, 18), "Close"))
             {
                 _isOpen = false;
                 return;
             }
 
-            GUILayout.Space(25);
+            GUILayout.Space(24);
 
             var helper = IAPHelper.Instance;
             if (helper == null)
             {
-                GUILayout.Label("Status: <color=red>IAPHelper instance not found in scene!</color>");
+                GUILayout.Label("<color=red><b>IAPHelper.Instance is null — not initialized yet.</b></color>");
                 return;
             }
 
-            // Connection Banner
+            DrawConnectionBanner(helper);
+            GUILayout.Space(4);
+            DrawGlobalActions(helper);
+            GUILayout.Space(4);
+            DrawProductsCatalog(helper);
+            GUILayout.Space(4);
+            DrawEventLog();
+        }
+
+        // ── Connection Banner ─────────────────────────────────────────────────────
+
+        private void DrawConnectionBanner(IAPHelper helper)
+        {
             GUILayout.BeginVertical("box");
-            string statusColor = helper.IsConnected ? "lime" : "yellow";
-            GUILayout.Label($"<b>Store Connection:</b> <color={statusColor}>{(helper.IsConnected ? "Connected" : "Disconnected / Initializing")}</color>");
-            GUILayout.Label($"<b>Products Loaded:</b> {helper.ProductsLoaded} | <b>Auto-Restore:</b> {helper.autoRestorePurchases}");
-            GUILayout.Label($"<b>Platform:</b> {Application.platform}");
+
+            string connColor = helper.IsConnected ? "lime" : "yellow";
+            string connLabel = helper.IsConnected ? "Connected" : "Disconnected / Initializing";
+            GUILayout.Label($"<b>Store:</b> <color={connColor}>{connLabel}</color>  " +
+                            $"<b>Products:</b> {(helper.ProductsLoaded ? "<color=lime>OK</color>" : "<color=yellow>Pending</color>")}  " +
+                            $"<b>Auto-Restore:</b> {helper.autoRestorePurchases}");
+
+            GUILayout.Label($"<b>Platform:</b> {Application.platform}  " +
+                            $"<b>HasPurchasedFallback:</b> " +
+                            $"{(IAPHelper.HasPurchasedFallback != null ? "<color=lime>wired</color>" : "<color=yellow>null — store + PlayerPrefs only</color>")}");
+
             GUILayout.EndVertical();
+        }
 
-            GUILayout.Space(5);
+        // ── Global Actions ────────────────────────────────────────────────────────
 
-            // Global Actions
+        private void DrawGlobalActions(IAPHelper helper)
+        {
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Force Connect / Init"))
+
+            if (GUILayout.Button("Force Init"))
             {
                 helper.Initialize();
-                _statusLog = $"[{DateTime.Now:HH:mm:ss}] Initialize called.";
+                Log("Initialize() called.");
             }
 
-            if (GUILayout.Button("Fetch / Restore Now"))
+            if (GUILayout.Button("Fetch / Restore All"))
             {
                 helper.FetchPurchases();
-                _statusLog = $"[{DateTime.Now:HH:mm:ss}] FetchPurchases requested.";
+                Log("FetchPurchases() called.");
             }
 
-            if (GUILayout.Button("Clear All Fallback Keys"))
+            if (GUILayout.Button("Clear All PlayerPrefs Keys"))
             {
                 ClearAllFallbacks(helper);
-                _statusLog = $"[{DateTime.Now:HH:mm:ss}] PlayerPrefs fallbacks cleared.";
+                Log("All PlayerPrefs fallback keys cleared.");
             }
+
             GUILayout.EndHorizontal();
+        }
 
-            GUILayout.Space(5);
+        // ── Products ──────────────────────────────────────────────────────────────
 
-            // Products Section
-            GUILayout.Label("<b>Configured Products Catalog:</b>");
+        private void DrawProductsCatalog(IAPHelper helper)
+        {
+            GUILayout.Label("<b>Products:</b>");
+
             _scrollPos = GUILayout.BeginScrollView(_scrollPos, GUILayout.Height(260));
 
             if (helper.products == null || helper.products.Count == 0)
             {
-                GUILayout.Label("No products configured in IAPHelper.");
+                GUILayout.Label("No products configured.");
             }
             else
             {
                 foreach (var product in helper.products)
-                {
                     DrawProductRow(helper, product);
-                }
             }
 
             GUILayout.EndScrollView();
-
-            GUILayout.Space(5);
-
-            // Status Log
-            GUILayout.BeginVertical("box");
-            GUILayout.Label($"<b>Last Log:</b> {_statusLog}");
-            GUILayout.EndVertical();
         }
 
         private void DrawProductRow(IAPHelper helper, ProductConfig product)
         {
             GUILayout.BeginVertical("box");
 
+            // ── Header row ────────────────────────────────────────────────────────
+            bool storeOwned      = false;
+            bool fallbackOwned   = IAPHelper.HasPurchasedFallback != null && IAPHelper.HasPurchasedFallback(product.id);
+            bool prefOwned       = !string.IsNullOrEmpty(product.playerPrefsFallbackKey) &&
+                                   PlayerPrefs.GetInt(product.playerPrefsFallbackKey, 0) == 1;
+
+            // Store ownership check (requires connection)
+            if (helper.IsConnected && helper.ProductsLoaded)
+                storeOwned = helper.HasPurchased(product.id) && !fallbackOwned && !prefOwned;
+
             bool isOwned = helper.HasPurchased(product.id);
-            string ownedColor = isOwned ? "lime" : "white";
-            string priceStr = helper.GetPrice(product.id);
+            string ownColor = isOwned ? "lime" : "white";
+            string price    = helper.GetPrice(product.id);
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label($"<b>ID:</b> {product.id} (<color=cyan>{product.type}</color>)");
+            GUILayout.Label($"<b><color=cyan>{product.id}</color></b> ({product.type})");
             GUILayout.FlexibleSpace();
-            GUILayout.Label($"<b>Price:</b> {(!string.IsNullOrEmpty(priceStr) ? priceStr : "(loading)")}");
-            GUILayout.Label($"| <b>Owned:</b> <color={ownedColor}>{(isOwned ? "YES" : "NO")}</color>");
+            GUILayout.Label($"{(!string.IsNullOrEmpty(price) ? price : "(loading)")}");
+            GUILayout.Label($"  Owned: <color={ownColor}><b>{(isOwned ? "YES" : "NO")}</b></color>");
             GUILayout.EndHorizontal();
 
+            // Ownership source breakdown
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"  <color=grey>Store: {(storeOwned ? "✓" : "—")}  " +
+                            $"PlayerPrefs: {(prefOwned ? "✓ (" + product.playerPrefsFallbackKey + ")" : "—")}  " +
+                            $"Fallback: {(fallbackOwned ? "✓" : "—")}</color>",
+                            GUILayout.ExpandWidth(true));
+            GUILayout.EndHorizontal();
+
+            // ── Action buttons ────────────────────────────────────────────────────
             GUILayout.BeginHorizontal();
 
-            // Simulate Grant
+            // Grant: fire OnEntitlementGranted + UnityEvent
             if (GUILayout.Button("Simulate Grant"))
             {
                 if (!string.IsNullOrEmpty(product.playerPrefsFallbackKey))
@@ -189,31 +261,57 @@ namespace Wagenheimer.IAPHelper.UI
                     PlayerPrefs.Save();
                 }
                 product.onEntitlementGranted?.Invoke();
-                _statusLog = $"[{DateTime.Now:HH:mm:ss}] Simulated grant for: {product.id}";
+                Log($"Simulated grant: {product.id}");
             }
 
-            // Simulate Revoke (for non-consumables)
             if (product.type == ProductType.NonConsumable)
             {
-                if (GUILayout.Button("Revoke Fallback"))
+                // Revoke only: clears local cache + fires OnEntitlementRevoked
+                if (GUILayout.Button("Revoke Local"))
                 {
-                    if (!string.IsNullOrEmpty(product.playerPrefsFallbackKey))
-                    {
-                        PlayerPrefs.DeleteKey(product.playerPrefsFallbackKey);
-                        PlayerPrefs.Save();
-                    }
-                    _statusLog = $"[{DateTime.Now:HH:mm:ss}] Revoked fallback for: {product.id}";
+                    helper.DebugRevokeEntitlement(product.id);
+                    Log($"DEBUG Revoke: {product.id}");
                 }
+
+                // Revoke + immediately trigger FetchPurchases to test full restore loop
+                GUI.backgroundColor = new Color(1f, 0.6f, 0.1f);
+                if (GUILayout.Button("Revoke & Restore"))
+                {
+                    helper.DebugResetAndRestore(product.id);
+                    Log($"DEBUG Revoke+Restore: {product.id}");
+                }
+                GUI.backgroundColor = Color.white;
             }
 
-            // Buy via Store
-            if (GUILayout.Button("Buy (Store)"))
+            // Real purchase via store
+            GUI.backgroundColor = new Color(0.3f, 1f, 0.3f);
+            if (GUILayout.Button("Buy"))
             {
                 helper.Purchase(product.id);
-                _statusLog = $"[{DateTime.Now:HH:mm:ss}] Sent purchase request for: {product.id}";
+                Log($"Purchase sent: {product.id}");
             }
+            GUI.backgroundColor = Color.white;
 
             GUILayout.EndHorizontal();
+            GUILayout.EndVertical();
+        }
+
+        // ── Event Log ─────────────────────────────────────────────────────────────
+
+        private void DrawEventLog()
+        {
+            GUILayout.BeginVertical("box");
+            GUILayout.Label("<b>Event Log:</b>");
+
+            if (_eventLog.Count == 0)
+            {
+                GUILayout.Label("<color=grey>No events yet.</color>");
+            }
+            else
+            {
+                for (int i = _eventLog.Count - 1; i >= 0; i--)
+                    GUILayout.Label(_eventLog[i]);
+            }
 
             GUILayout.EndVertical();
         }
@@ -225,9 +323,7 @@ namespace Wagenheimer.IAPHelper.UI
             foreach (var p in helper.products)
             {
                 if (!string.IsNullOrEmpty(p.playerPrefsFallbackKey))
-                {
                     PlayerPrefs.DeleteKey(p.playerPrefsFallbackKey);
-                }
             }
             PlayerPrefs.Save();
         }
@@ -242,8 +338,7 @@ namespace Wagenheimer.IAPHelper.UI
         public static IAPDebugOverlay CreateOverlay()
         {
             var existing = FindObjectOfType<IAPDebugOverlay>();
-            if (existing != null)
-                return existing;
+            if (existing != null) return existing;
 
             var go = new GameObject("IAPDebugOverlay", typeof(IAPDebugOverlay));
             return go.GetComponent<IAPDebugOverlay>();
@@ -259,4 +354,3 @@ namespace Wagenheimer.IAPHelper.UI
 public class IAPDebugOverlay : Wagenheimer.IAPHelper.UI.IAPDebugOverlay
 {
 }
-

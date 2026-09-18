@@ -852,6 +852,70 @@ namespace Wagenheimer.IAPHelper
 
         #region Public Methods - Queries & Entitlement
 
+        #region Debug & QA — Entitlement Simulation
+
+        /// <summary>
+        /// [DEBUG / QA ONLY] Revokes a product entitlement locally for testing the restore flow.
+        /// This does NOT contact the store or issue any refund — it only clears the local dedup cache
+        /// and the PlayerPrefs fallback key (if configured), then fires <see cref="OnEntitlementRevoked"/>.
+        ///
+        /// After calling this, <see cref="HasPurchased"/> will return the store's live value only (no
+        /// local cache). Call <see cref="FetchPurchases"/> or <see cref="DebugResetAndRestore"/> to
+        /// re-trigger the automatic restore path and verify your <see cref="OnEntitlementGranted"/> handler.
+        ///
+        /// Note: if your game stores ownership in its own save file (e.g. SaveData.UnlockedGame) wired
+        /// via <see cref="HasPurchasedFallback"/>, clearing it here won't affect that save — you need to
+        /// reset it separately in your save system. This method fires <see cref="OnEntitlementRevoked"/>
+        /// so you can hook a handler that resets your save too.
+        /// </summary>
+        public void DebugRevokeEntitlement(string productId)
+        {
+            if (!Application.isEditor && !Debug.isDebugBuild)
+            {
+                Debug.LogError("[IAPHelper] DebugRevokeEntitlement is only available in Editor and Development Builds.");
+                return;
+            }
+
+            Debug.Log($"[IAPHelper] DEBUG: Revoking entitlement for '{productId}' (local cache + fallback key only).");
+
+            // Remove from the per-session grant dedup set so the next FetchPurchases can re-grant it.
+            _grantedProductIds.Remove(productId);
+
+            // Clear the PlayerPrefs fallback key if one is configured on this product.
+            var config = GetProductConfig(productId);
+            if (config != null && !string.IsNullOrEmpty(config.playerPrefsFallbackKey))
+            {
+                PlayerPrefs.DeleteKey(config.playerPrefsFallbackKey);
+                PlayerPrefs.Save();
+                Debug.Log($"[IAPHelper] DEBUG: Cleared PlayerPrefs fallback key: {config.playerPrefsFallbackKey}");
+            }
+
+            // Fire OnEntitlementRevoked so the game can reset its own save state.
+            try { OnEntitlementRevoked?.Invoke(productId); }
+            catch (Exception ex) { Debug.LogError($"[IAPHelper] Error in OnEntitlementRevoked (debug revoke): {ex.Message}"); }
+        }
+
+        /// <summary>
+        /// [DEBUG / QA ONLY] Revokes the entitlement locally then immediately calls
+        /// <see cref="FetchPurchases"/> to trigger the automatic restore path.
+        /// If the product was genuinely purchased in the store, <see cref="OnEntitlementGranted"/>
+        /// will fire again — confirming the full revoke → restore loop works correctly.
+        /// </summary>
+        public void DebugResetAndRestore(string productId)
+        {
+            if (!Application.isEditor && !Debug.isDebugBuild)
+            {
+                Debug.LogError("[IAPHelper] DebugResetAndRestore is only available in Editor and Development Builds.");
+                return;
+            }
+
+            DebugRevokeEntitlement(productId);
+            FetchPurchases();
+            Debug.Log($"[IAPHelper] DEBUG: FetchPurchases triggered — watch for OnEntitlementGranted to re-fire for '{productId}'.");
+        }
+
+        #endregion
+
         public Product GetProduct(string productId)
         {
             if (!ProductsLoaded || _storeController == null)
