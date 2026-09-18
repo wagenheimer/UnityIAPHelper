@@ -56,7 +56,6 @@ namespace Wagenheimer.IAPHelper
             }
         };
 
-        [Header("Settings")]
         public bool initializeOnStart = true;
 
         [Tooltip("Automatically detects and sets autoRestorePurchases according to the runtime platform (True on Android/Amazon, False on iOS/macOS).")]
@@ -93,7 +92,6 @@ namespace Wagenheimer.IAPHelper
         public bool processPendingOnFetch = true;
         public bool logPurchasesFetchFailures = false;
 
-        [Header("Debug & QA")]
         [Tooltip("Automatically attaches the in-game IAPDebugOverlay in Editor and Development Builds. No manual scene setup or code required.")]
         public bool enableDebugOverlay = true;
 
@@ -811,6 +809,17 @@ namespace Wagenheimer.IAPHelper
         private void HandleAppleEntitlementRevoked(string productId)
         {
             Debug.Log($"[IAPHelper] Entitlement revoked by store (refund/cancellation): {productId}");
+            RevokeEntitlement(productId);
+        }
+
+        /// <summary>
+        /// Fires <see cref="OnEntitlementRevoked"/> and the matching <see cref="ProductConfig.onEntitlementRevoked"/>
+        /// UnityEvent for <paramref name="productId"/>, clears the per-session grant dedup cache, and clears the
+        /// PlayerPrefs fallback key (if configured). Shared by the real store revocation path and the debug/QA
+        /// revoke tools, so both notify the game exactly the same way.
+        /// </summary>
+        private void RevokeEntitlement(string productId)
+        {
             _grantedProductIds.Remove(productId);
 
             var config = GetProductConfig(productId);
@@ -828,6 +837,20 @@ namespace Wagenheimer.IAPHelper
                 }
             }
 
+            // 1. Per-product UnityEvent - connect game methods here directly in the Inspector with zero code.
+            if (config != null)
+            {
+                try
+                {
+                    config.onEntitlementRevoked?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[IAPHelper] Error invoking onEntitlementRevoked UnityEvent for '{productId}': {ex.Message}");
+                }
+            }
+
+            // 2. Global C# event
             try
             {
                 OnEntitlementRevoked?.Invoke(productId);
@@ -878,21 +901,9 @@ namespace Wagenheimer.IAPHelper
 
             Debug.Log($"[IAPHelper] DEBUG: Revoking entitlement for '{productId}' (local cache + fallback key only).");
 
-            // Remove from the per-session grant dedup set so the next FetchPurchases can re-grant it.
-            _grantedProductIds.Remove(productId);
-
-            // Clear the PlayerPrefs fallback key if one is configured on this product.
-            var config = GetProductConfig(productId);
-            if (config != null && !string.IsNullOrEmpty(config.playerPrefsFallbackKey))
-            {
-                PlayerPrefs.DeleteKey(config.playerPrefsFallbackKey);
-                PlayerPrefs.Save();
-                Debug.Log($"[IAPHelper] DEBUG: Cleared PlayerPrefs fallback key: {config.playerPrefsFallbackKey}");
-            }
-
-            // Fire OnEntitlementRevoked so the game can reset its own save state.
-            try { OnEntitlementRevoked?.Invoke(productId); }
-            catch (Exception ex) { Debug.LogError($"[IAPHelper] Error in OnEntitlementRevoked (debug revoke): {ex.Message}"); }
+            // Fires OnEntitlementRevoked + the per-product UnityEvent so the game resets its own save state
+            // exactly as it would for a real store revocation.
+            RevokeEntitlement(productId);
         }
 
         /// <summary>
@@ -1136,7 +1147,6 @@ namespace Wagenheimer.IAPHelper
         [Tooltip("Product type: Consumable (repeatable like coins), NonConsumable (permanent like unlock game or remove ads), or Subscription.")]
         public ProductType type = ProductType.NonConsumable;
 
-        [Header("Store SKU Overrides (Optional)")]
         [Tooltip("Google Play product ID if different from main ID.")]
         public string googlePlayId = "";
 
@@ -1146,7 +1156,6 @@ namespace Wagenheimer.IAPHelper
         [Tooltip("Amazon Appstore product ID if different from main ID.")]
         public string amazonId = "unlockfullgameamazon";
 
-        [Header("Display Fallbacks (Editor & Offline)")]
         [Tooltip("Fallback title displayed when offline, in Editor, or before store metadata loads.")]
         public string titleFallback = "";
 
@@ -1157,12 +1166,14 @@ namespace Wagenheimer.IAPHelper
         [Tooltip("Fallback localized price string (e.g. '$2.99') used when offline or in Editor.")]
         public string priceFallback = "";
 
-        [Header("Persistence & Zero-Code Rewards")]
         [Tooltip("Optional PlayerPrefs key. If set, saved as '1' automatically upon purchase/restore and checked by HasPurchased.")]
         public string playerPrefsFallbackKey = "";
 
         [Tooltip("Dispatched when this product is granted (live purchase or restore). Connect game methods here directly in the Inspector with zero code!")]
         public UnityEngine.Events.UnityEvent onEntitlementGranted = new UnityEngine.Events.UnityEvent();
+
+        [Tooltip("Dispatched when this product's entitlement is revoked (refund, family sharing cancellation, or a debug revoke). Connect game methods here directly in the Inspector with zero code!")]
+        public UnityEngine.Events.UnityEvent onEntitlementRevoked = new UnityEngine.Events.UnityEvent();
     }
 
     public class PurchaseResult
