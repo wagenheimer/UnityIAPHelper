@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-09-18
+
+### Added
+- **IAPDebugOverlay: scale & maximize**: The panel is IMGUI, which doesn't respect device DPI — on phones it used to render tiny. Added `mobileDefaultScale`/`desktopDefaultScale` (auto-picked per platform), `A-`/`A+` buttons in the header to adjust it live (persisted via `PlayerPrefs`), and a `⛶` maximize toggle that expands the panel to fill the screen. The product list also grows to use the extra space when maximized.
+
+## [1.4.0] - 2026-09-18
+
+### Added
+- **`ProductConfig.onEntitlementRevoked` (`UnityEvent`)**: Wire refund/cancellation handling per product directly in the Inspector, with zero code — mirrors `onEntitlementGranted`. Fired for both the real Apple StoreKit revocation path and `DebugRevokeEntitlement`/`DebugResetAndRestore`.
+- **Inspector: live event wiring summary**: Each product's Granted/Revoked cards now list exactly which `object.method()` is bound (with a "Ping" button to select it), and show a green/red dot next to the product name — even while collapsed — so an unwired event is impossible to miss.
+- **Inspector: product search**: A filter field appears once a catalog has more than 3 products.
+
+### Changed
+- **Grant/revoke bookkeeping centralized**: `IAPHelper` now funnels all revocation handling (dedup cache, PlayerPrefs fallback key clearing, event dispatch) through a single internal `RevokeEntitlement()`, shared by the real store path and the debug/QA tools.
+- **Inspector & Debug Overlay redesign**: Colorful, card-based layout with a consistent accent-color palette across the custom Inspector and the in-game `IAPDebugOverlay` (F10).
+
+### Fixed
+- **Duplicate section headers in the custom Inspector**: `[Header(...)]` attributes on `ProductConfig`/`IAPHelper` fields were rendering alongside the custom-drawn section titles, showing every section name twice (e.g. "Store SKU Overrides" then "Store SKU Overrides (Optional)"). Removed the redundant attributes — every section now has exactly one title.
+
 ## [1.3.0] - 2026-09-18
 
 ### Added

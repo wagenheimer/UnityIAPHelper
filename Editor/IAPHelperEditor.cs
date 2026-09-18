@@ -86,7 +86,7 @@ namespace Wagenheimer.IAPHelper.Editor
                 normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.35f, 0.75f, 1f) : new Color(0.1f, 0.35f, 0.75f) }
             };
 
-            EditorGUILayout.LabelField("🛒 IAP Helper v1.3.0", titleStyle);
+            EditorGUILayout.LabelField("🛒 IAP Helper v1.5.0", titleStyle);
             EditorGUILayout.LabelField("Production-ready monetization framework with multi-product zero-code support.", EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.EndVertical();
         }

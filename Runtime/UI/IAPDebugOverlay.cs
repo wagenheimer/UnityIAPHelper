@@ -27,6 +27,20 @@ namespace Wagenheimer.IAPHelper.UI
         [Tooltip("Allow overlay to run even in non-development / release builds. Strongly recommended FALSE for production.")]
         public bool enableInReleaseBuilds = false;
 
+        [Header("Scale (mobile-friendly)")]
+        [Tooltip("UI scale used automatically on Android/iOS (touch screens need bigger text/buttons than a desktop mouse UI). Adjustable at runtime with the +/- buttons in the panel header.")]
+        [Range(1f, 3f)]
+        public float mobileDefaultScale = 1.75f;
+
+        [Tooltip("UI scale used on desktop/Editor. Adjustable at runtime with the +/- buttons in the panel header.")]
+        [Range(0.75f, 3f)]
+        public float desktopDefaultScale = 1f;
+
+        private const float MinScale = 0.75f;
+        private const float MaxScale = 3f;
+        private const float ScaleStep = 0.25f;
+        private const string ScalePrefsKey = "Wagenheimer.IAPDebugOverlay.Scale";
+
         #endregion
 
         #region Palette
@@ -50,6 +64,11 @@ namespace Wagenheimer.IAPHelper.UI
         private Rect _windowRect = new Rect(10, 10, 560, 620);
         private Vector2 _scrollPos;
 
+        // Scale & maximize (logical/pre-scale coordinates — see OnGUI's GUI.matrix wrapping)
+        private float _scale = 1f;
+        private bool _isMaximized;
+        private Rect _preMaximizeRect;
+
         // Event log
         private readonly List<(string text, Color color)> _eventLog = new List<(string, Color)>();
         private const int MaxLogLines = 14;
@@ -66,6 +85,7 @@ namespace Wagenheimer.IAPHelper.UI
         private GUIStyle _buttonStyle;
         private GUIStyle _closeButtonStyle;
         private GUIStyle _floatingButtonStyle;
+        private GUIStyle _headerButtonStyle;
         private readonly Dictionary<Color, Texture2D> _textureCache = new Dictionary<Color, Texture2D>();
 
         #endregion
@@ -81,6 +101,10 @@ namespace Wagenheimer.IAPHelper.UI
             }
 
             DontDestroyOnLoad(gameObject);
+
+            bool isTouchPlatform = Application.platform == RuntimePlatform.Android || Application.platform == RuntimePlatform.IPhonePlayer;
+            float defaultScale = isTouchPlatform ? mobileDefaultScale : desktopDefaultScale;
+            _scale = Mathf.Clamp(PlayerPrefs.GetFloat(ScalePrefsKey, defaultScale), MinScale, MaxScale);
         }
 
         private void OnEnable()
@@ -127,16 +151,38 @@ namespace Wagenheimer.IAPHelper.UI
 
             GUI.depth = -9999;
 
+            // Scale the whole overlay around the top-left corner. Everything drawn below this point
+            // (floating button, window, its contents) must use LOGICAL coordinates — i.e. divided by
+            // _scale — since GUI.matrix stretches them back up to real screen pixels.
+            var originalMatrix = GUI.matrix;
+            GUIUtility.ScaleAroundPivot(new Vector2(_scale, _scale), Vector2.zero);
+            float logicalWidth = Screen.width / _scale;
+            float logicalHeight = Screen.height / _scale;
+
             if (showFloatingButton && !_isOpen)
             {
-                if (GUI.Button(new Rect(5, Screen.height - 46, 108, 34), "🛒 IAP DBG", _floatingButtonStyle))
+                if (GUI.Button(new Rect(5, logicalHeight - 46, 108, 34), "🛒 IAP DBG", _floatingButtonStyle))
                     _isOpen = true;
             }
 
             if (_isOpen)
             {
+                if (_isMaximized)
+                {
+                    const float margin = 8f;
+                    _windowRect = new Rect(margin, margin, logicalWidth - margin * 2, logicalHeight - margin * 2);
+                }
+                else
+                {
+                    // Keep the (movable) window on-screen if the scale/orientation changed since last frame.
+                    _windowRect.x = Mathf.Clamp(_windowRect.x, 0, Mathf.Max(0, logicalWidth - 40));
+                    _windowRect.y = Mathf.Clamp(_windowRect.y, 0, Mathf.Max(0, logicalHeight - 40));
+                }
+
                 _windowRect = GUI.Window(888123, _windowRect, DrawDebugWindow, GUIContent.none, _windowStyle);
             }
+
+            GUI.matrix = originalMatrix;
         }
 
         #endregion
@@ -196,8 +242,8 @@ namespace Wagenheimer.IAPHelper.UI
             {
                 normal = { background = SolidTexture(ColorBackground) },
                 onNormal = { background = SolidTexture(ColorBackground) },
-                padding = new RectOffset(10, 10, 26, 10),
-                border = new RectOffset(6, 6, 22, 6)
+                padding = new RectOffset(10, 10, 30, 10),
+                border = new RectOffset(6, 6, 26, 6)
             };
 
             _headerLabelStyle = new GUIStyle(GUI.skin.label)
@@ -270,6 +316,31 @@ namespace Wagenheimer.IAPHelper.UI
                 normal = { textColor = Color.white },
                 alignment = TextAnchor.MiddleCenter
             };
+
+            _headerButtonStyle = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = 12,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = Color.white, background = SolidTexture(new Color(1f, 1f, 1f, 0.15f)) },
+                hover = { textColor = Color.white, background = SolidTexture(new Color(1f, 1f, 1f, 0.28f)) }
+            };
+        }
+
+        private void SetScale(float newScale)
+        {
+            _scale = Mathf.Clamp(newScale, MinScale, MaxScale);
+            PlayerPrefs.SetFloat(ScalePrefsKey, _scale);
+            PlayerPrefs.Save();
+        }
+
+        private void ToggleMaximize()
+        {
+            _isMaximized = !_isMaximized;
+            if (_isMaximized)
+                _preMaximizeRect = _windowRect;
+            else
+                _windowRect = _preMaximizeRect;
         }
 
         private void DrawPill(string text, Color color)
@@ -288,17 +359,27 @@ namespace Wagenheimer.IAPHelper.UI
         private void DrawDebugWindow(int windowId)
         {
             // ── Colorful header bar ──────────────────────────────────────────────
-            var headerRect = new Rect(0, 0, _windowRect.width, 22);
+            const float headerHeight = 26f;
+            var headerRect = new Rect(0, 0, _windowRect.width, headerHeight);
             GUI.DrawTexture(headerRect, GradientTexture(ColorHeaderFrom, ColorHeaderTo, 128));
-            GUI.Label(new Rect(10, 0, _windowRect.width - 80, 22), "🛒 IAP Helper — Debug Panel", _headerLabelStyle);
+            GUI.Label(new Rect(10, 0, _windowRect.width - 210, headerHeight), "🛒 IAP Helper — Debug Panel", _headerLabelStyle);
 
-            if (GUI.Button(new Rect(_windowRect.width - 62, 2, 56, 18), "Close ✕", _closeButtonStyle))
+            // Scale controls: bigger tap targets matter most here, since a hard-to-read panel is exactly
+            // what these buttons exist to fix — no chicken-and-egg tiny buttons.
+            float x = _windowRect.width - 200;
+            if (GUI.Button(new Rect(x, 3, 30, 20), "A-", _headerButtonStyle)) SetScale(_scale - ScaleStep);
+            x += 32;
+            if (GUI.Button(new Rect(x, 3, 30, 20), "A+", _headerButtonStyle)) SetScale(_scale + ScaleStep);
+            x += 34;
+            if (GUI.Button(new Rect(x, 3, 34, 20), _isMaximized ? "🗗" : "⛶", _headerButtonStyle)) ToggleMaximize();
+            x += 38;
+            if (GUI.Button(new Rect(x, 3, 56, 20), "Close ✕", _closeButtonStyle))
             {
                 _isOpen = false;
                 return;
             }
 
-            GUI.DragWindow(new Rect(0, 0, _windowRect.width - 66, 22));
+            GUI.DragWindow(new Rect(0, 0, _windowRect.width - 204, headerHeight));
 
             GUILayout.Space(6);
 
@@ -385,7 +466,10 @@ namespace Wagenheimer.IAPHelper.UI
             GUILayout.BeginVertical(_panelStyle);
             GUILayout.Label("PRODUCTS", _sectionTitleStyle);
 
-            _scrollPos = GUILayout.BeginScrollView(_scrollPos, GUILayout.Height(230));
+            // Give the catalog the extra room when maximized instead of leaving it stuck at a fixed
+            // height while the rest of the (now much bigger) window sits empty.
+            float scrollHeight = _isMaximized ? Mathf.Max(150f, _windowRect.height - 380f) : 230f;
+            _scrollPos = GUILayout.BeginScrollView(_scrollPos, GUILayout.Height(scrollHeight));
 
             if (helper.products == null || helper.products.Count == 0)
             {
