@@ -18,7 +18,7 @@ namespace Wagenheimer.IAPHelper.Editor
 
         public static void ShowWindow(List<AuditResult> results)
         {
-            var window = GetWindow<IAPHelperAuditWindow>(true, "IAP Helper - Verificação de Setup");
+            var window = GetWindow<IAPHelperAuditWindow>(true, "IAP Helper - Setup Verification");
             window._results = results;
             window.minSize = new Vector2(520, 420);
             window.Show();
@@ -40,15 +40,15 @@ namespace Wagenheimer.IAPHelper.Editor
 
             var summaryType = fails > 0 ? MessageType.Error : warnings > 0 ? MessageType.Warning : MessageType.Info;
             var summaryText = fails > 0
-                ? $"{fails} falha(s) crítica(s) encontrada(s) - resolva antes de publicar a build."
+                ? $"{fails} critical failure(s) found - resolve before publishing the build."
                 : warnings > 0
-                    ? $"{warnings} aviso(s) - vale revisar."
-                    : "Nenhuma falha crítica encontrada nas verificações automáticas.";
+                    ? $"{warnings} warning(s) - worth reviewing."
+                    : "No critical failures found in the automated checks.";
             EditorGUILayout.HelpBox(summaryText, summaryType);
 
             EditorGUILayout.HelpBox(
-                "Isto cobre apenas o que dá para verificar por código/assets. Itens que só existem nas consoles das lojas " +
-                "(Google Play / App Store) continuam precisando de checagem manual - veja IAP-CHECKLIST.md no pacote.",
+                "This only covers what can be verified from code/assets. Items that only exist in the store consoles " +
+                "(Google Play / App Store) still need manual checking - see IAP-CHECKLIST.md in the package.",
                 MessageType.None);
 
             GUILayout.Space(6);
@@ -75,13 +75,13 @@ namespace Wagenheimer.IAPHelper.Editor
         {
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
 
-            if (GUILayout.Button("Rodar novamente", EditorStyles.toolbarButton, GUILayout.Width(120)))
+            if (GUILayout.Button("Run again", EditorStyles.toolbarButton, GUILayout.Width(120)))
                 _results = IAPHelperAudit.RunAudit();
 
-            if (GUILayout.Button("Copiar relatório (Markdown)", EditorStyles.toolbarButton, GUILayout.Width(180)))
+            if (GUILayout.Button("Copy report (Markdown)", EditorStyles.toolbarButton, GUILayout.Width(180)))
             {
                 EditorGUIUtility.systemCopyBuffer = IAPHelperAudit.ToMarkdown(_results);
-                ShowNotification(new GUIContent("Relatório copiado!"));
+                ShowNotification(new GUIContent("Report copied!"));
             }
 
             GUILayout.FlexibleSpace();
@@ -126,7 +126,7 @@ namespace Wagenheimer.IAPHelper.Editor
             {
                 var prev = GUI.contentColor;
                 GUI.contentColor = new Color(0.5f, 0.75f, 1f);
-                EditorGUILayout.LabelField("Como corrigir: " + r.FixHint, EditorStyles.wordWrappedMiniLabel);
+                EditorGUILayout.LabelField("How to fix: " + r.FixHint, EditorStyles.wordWrappedMiniLabel);
                 GUI.contentColor = prev;
             }
 

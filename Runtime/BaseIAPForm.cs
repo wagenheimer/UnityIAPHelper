@@ -60,14 +60,14 @@ namespace Wagenheimer.IAPHelper
         {
             try
             {
-                Debug.Log($"[{GetType().Name}] Inicializando formulário...");
+                Debug.Log($"[{GetType().Name}] Initializing form...");
 
                 ConfigureRestoreButton();
                 await InitializeIAPAndLoadPrice();
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[{GetType().Name}] Erro no OnEnable: {ex.Message}\n{ex.StackTrace}");
+                Debug.LogError($"[{GetType().Name}] Error in OnEnable: {ex.Message}\n{ex.StackTrace}");
                 ShowError(Translate("error"));
             }
         }
@@ -88,7 +88,7 @@ namespace Wagenheimer.IAPHelper
 
             if (_iapHelper == null)
             {
-                Debug.LogError($"[{GetType().Name}] IAPHelper não encontrado!");
+                Debug.LogError($"[{GetType().Name}] IAPHelper not found!");
                 SetPriceText(Translate("iapnotready"));
                 return;
             }
@@ -111,14 +111,14 @@ namespace Wagenheimer.IAPHelper
 
             if (_iapHelper.HasPurchased(productId))
             {
-                Debug.Log($"[{GetType().Name}] Produto já adquirido: {productId}");
+                Debug.Log($"[{GetType().Name}] Product already owned: {productId}");
                 SetPriceText(Translate("purchased"));
                 OnProductAlreadyOwned();
                 return;
             }
 
             SetPriceText(product.metadata?.localizedPriceString ?? "");
-            Debug.Log($"[{GetType().Name}] Produto: {productId} - {product.metadata?.localizedPriceString}");
+            Debug.Log($"[{GetType().Name}] Product: {productId} - {product.metadata?.localizedPriceString}");
         }
 
         protected virtual void ConfigureRestoreButton()
@@ -140,7 +140,7 @@ namespace Wagenheimer.IAPHelper
 
         protected virtual void OnProductAlreadyOwned()
         {
-            Debug.Log($"[{GetType().Name}] Produto já pertence ao usuário.");
+            Debug.Log($"[{GetType().Name}] Product already owned by the user.");
         }
 
         #endregion
@@ -151,7 +151,7 @@ namespace Wagenheimer.IAPHelper
         {
             if (_isPurchasing)
             {
-                Debug.LogWarning($"[{GetType().Name}] Compra já em andamento.");
+                Debug.LogWarning($"[{GetType().Name}] Purchase already in progress.");
                 return;
             }
 
@@ -160,14 +160,14 @@ namespace Wagenheimer.IAPHelper
 
             if (!ready)
             {
-                Debug.LogError($"[{GetType().Name}] IAP não inicializado.");
+                Debug.LogError($"[{GetType().Name}] IAP not initialized.");
                 ShowError(Translate("iapnotready"));
                 return;
             }
 
             try
             {
-                Debug.Log($"[{GetType().Name}] Iniciando compra: {productId}");
+                Debug.Log($"[{GetType().Name}] Starting purchase: {productId}");
 
                 _isPurchasing = true;
                 ShowPleaseWait();
@@ -187,7 +187,7 @@ namespace Wagenheimer.IAPHelper
 
                 if (result.FailureReason == PurchaseFailureReason.UserCancelled)
                 {
-                    Debug.Log($"[{GetType().Name}] Usuário cancelou a compra.");
+                    Debug.Log($"[{GetType().Name}] User cancelled the purchase.");
                     return;
                 }
 
@@ -196,7 +196,7 @@ namespace Wagenheimer.IAPHelper
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[{GetType().Name}] Erro ao comprar: {ex.Message}");
+                Debug.LogError($"[{GetType().Name}] Error while purchasing: {ex.Message}");
                 _isPurchasing = false;
                 HidePleaseWait();
                 ShowError(Translate("purchasefailed"));
@@ -207,7 +207,7 @@ namespace Wagenheimer.IAPHelper
 
         protected virtual void OnPurchaseSuccess()
         {
-            Debug.Log($"[{GetType().Name}] Compra finalizada com sucesso!");
+            Debug.Log($"[{GetType().Name}] Purchase completed successfully!");
         }
 
         #endregion
@@ -218,7 +218,7 @@ namespace Wagenheimer.IAPHelper
         {
             if (_isPurchasing)
             {
-                Debug.LogWarning($"[{GetType().Name}] Operação já em andamento.");
+                Debug.LogWarning($"[{GetType().Name}] Operation already in progress.");
                 return;
             }
 
@@ -262,7 +262,7 @@ namespace Wagenheimer.IAPHelper
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[{GetType().Name}] Erro ao restaurar: {ex.Message}");
+                Debug.LogError($"[{GetType().Name}] Error while restoring: {ex.Message}");
                 _isPurchasing = false;
                 HidePleaseWait();
                 ShowError(Translate("restorefailed"));
@@ -328,7 +328,7 @@ namespace Wagenheimer.IAPHelper
 
         protected virtual void ShowSuccess(string message)
         {
-            Debug.Log($"[{GetType().Name}] SUCESSO: {message}");
+            Debug.Log($"[{GetType().Name}] SUCCESS: {message}");
         }
 
         protected virtual void ShowError(string message)
@@ -339,7 +339,7 @@ namespace Wagenheimer.IAPHelper
             }
             else
             {
-                Debug.LogError($"[{GetType().Name}] ERRO: {message}");
+                Debug.LogError($"[{GetType().Name}] ERROR: {message}");
             }
         }
 

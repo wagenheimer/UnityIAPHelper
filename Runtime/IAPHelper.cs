@@ -33,8 +33,8 @@ namespace Wagenheimer.IAPHelper
         private bool _initializing;
 
         /// <summary>
-        /// IDs de produtos já concedidos nesta sessão (evita disparar <see cref="OnEntitlementGranted"/>
-        /// repetidamente para a mesma compra ao reprocessar pedidos pendentes/confirmados).
+        /// Product IDs already granted in this session (prevents <see cref="OnEntitlementGranted"/> from
+        /// firing repeatedly for the same purchase while reprocessing pending/confirmed orders).
         /// </summary>
         private readonly HashSet<string> _grantedProductIds = new HashSet<string>();
 
@@ -60,27 +60,27 @@ namespace Wagenheimer.IAPHelper
         public bool initializeOnStart = true;
 
         /// <summary>
-        /// Se habilitado, chama <see cref="FetchPurchases"/> automaticamente logo após conectar à loja.
-        /// <para><b>Android (Google Play / Amazon):</b> Altamente recomendado <c>true</c> (ou use <see cref="RecommendedAutoRestoreForCurrentPlatform"/>).
-        /// A consulta é silenciosa e sem prompt de senha, garantindo que compras não-consumíveis (ex: Unlock Game) sejam
-        /// restauradas automaticamente ao reinstalar o jogo ou trocar de aparelho, substituindo o antigo fluxo do IAPListener.</para>
-        /// <para><b>iOS / macOS (Apple):</b> Recomendado <c>false</c>. As diretrizes da Apple (App Store Review Guidelines)
-        /// exigem que a restauração de compras seja acionada por ação explícita do usuário (ex: botão 'Restaurar Compras')
-        /// para evitar solicitações inesperadas de autenticação do Apple ID na inicialização.</para>
+        /// When enabled, automatically calls <see cref="FetchPurchases"/> right after connecting to the store.
+        /// <para><b>Android (Google Play / Amazon):</b> Strongly recommended <c>true</c> (or use <see cref="RecommendedAutoRestoreForCurrentPlatform"/>).
+        /// The query is 100% silent and requires no password prompt, ensuring non-consumable purchases (e.g. Unlock Game)
+        /// are restored automatically when the player reinstalls the game or switches devices, replacing the old IAPListener flow.</para>
+        /// <para><b>iOS / macOS (Apple):</b> Recommended <c>false</c>. Apple's App Store Review Guidelines
+        /// require purchase restoration to be triggered by an explicit user action (e.g. a 'Restore Purchases' button)
+        /// to avoid unexpected Apple ID authentication prompts on launch.</para>
         /// </summary>
-        [Tooltip("Restaura compras automaticamente ao conectar. Recomendado TRUE no Android/Amazon e FALSE no iOS/macOS (Apple).")]
+        [Tooltip("Automatically restores purchases on connect. Recommended TRUE on Android/Amazon and FALSE on iOS/macOS (Apple).")]
         public bool autoRestorePurchases = false;
 
         /// <summary>
-        /// Retorna a configuração recomendada de autoRestorePurchases para a plataforma atual:
-        /// <c>true</c> para Android/Amazon (silencioso e obrigatório para restaurar ao reinstalar),
-        /// <c>false</c> para iOS/macOS (requer botão manual pela política da Apple).
+        /// Returns the recommended autoRestorePurchases setting for the current platform:
+        /// <c>true</c> for Android/Amazon (silent and required for restoring on reinstall),
+        /// <c>false</c> for iOS/macOS (requires a manual button per Apple's policy).
         /// </summary>
         public static bool RecommendedAutoRestoreForCurrentPlatform =>
             Application.platform == RuntimePlatform.Android;
 
         /// <summary>
-        /// Ajusta <see cref="autoRestorePurchases"/> automaticamente com base na plataforma de execução.
+        /// Automatically sets <see cref="autoRestorePurchases"/> based on the current runtime platform.
         /// </summary>
         public void ConfigureAutoRestoreByPlatform()
         {
@@ -107,15 +107,15 @@ namespace Wagenheimer.IAPHelper
         public event Action<Entitlement> OnCheckEntitlement;
 
         /// <summary>
-        /// Disparado exatamente uma vez por produto, assim que o helper determina que ele é de posse do
-        /// jogador — seja por uma compra ao vivo (<see cref="PendingOrder"/>), por uma restauração no boot
-        /// (<see cref="FetchPurchases"/>) ou por uma reconsulta ao retomar o foco do app.
+        /// Fired exactly once per product, as soon as the helper determines the player owns it — whether
+        /// through a live purchase (<see cref="PendingOrder"/>), a restore detected on boot
+        /// (<see cref="FetchPurchases"/>), or a re-fetch triggered when the app regains focus.
         /// <para>
-        /// Diferente do callback local passado para <see cref="PurchaseAsync"/>, esta assinatura é permanente:
-        /// deve ser usada pelo jogo (tipicamente uma única vez, no boot) para liberar o conteúdo comprado
-        /// (ex: <c>SaveData.UnlockedGame = true</c>). Isso garante que a compra seja concedida mesmo que a
-        /// UI de compra já tenha sido fechada, tenha estourado o timeout, ou o app tenha sido minimizado
-        /// durante o fluxo de pagamento da loja.
+        /// Unlike the local callback passed to <see cref="PurchaseAsync"/>, this subscription is permanent:
+        /// the game should use it (typically once, at boot) to unlock the purchased content
+        /// (e.g. <c>SaveData.UnlockedGame = true</c>). This guarantees the purchase is granted even if the
+        /// purchase UI has already been closed, its timeout has elapsed, or the app was minimized during the
+        /// store's payment flow.
         /// </para>
         /// </summary>
         public event Action<string> OnEntitlementGranted;
@@ -196,10 +196,10 @@ namespace Wagenheimer.IAPHelper
         }
 
         /// <summary>
-        /// Reconsulta compras pendentes quando o app volta ao primeiro plano. Cobre o caso em que o usuário
-        /// finaliza o pagamento na UI nativa da loja (Google Play / App Store), que roda por cima do app e
-        /// pode deixá-lo pausado/sem foco por tempo suficiente para o timeout de <see cref="PurchaseAsync"/>
-        /// expirar antes da confirmação chegar.
+        /// Re-fetches pending purchases when the app returns to the foreground. Covers the case where the
+        /// user finishes payment in the store's native UI (Google Play / App Store), which runs on top of the
+        /// app and can leave it paused/unfocused long enough for <see cref="PurchaseAsync"/>'s timeout to
+        /// expire before the confirmation arrives.
         /// </summary>
         protected virtual void OnApplicationPause(bool pauseStatus)
         {
@@ -218,13 +218,13 @@ namespace Wagenheimer.IAPHelper
             if (!IsConnected || !autoRestorePurchases)
                 return;
 
-            // OnApplicationPause e OnApplicationFocus costumam disparar quase juntos ao retomar o app;
-            // evita duas buscas redundantes em sequência.
+            // OnApplicationPause and OnApplicationFocus tend to fire almost together on resume;
+            // avoid two redundant fetches back-to-back.
             if (Time.unscaledTime - _lastResumeFetchTime < ResumeFetchCooldownSeconds)
                 return;
 
             _lastResumeFetchTime = Time.unscaledTime;
-            Debug.Log("[IAPHelper] App retomou o foco - reconsultando compras (auto-heal de pedidos pendentes).");
+            Debug.Log("[IAPHelper] App regained focus - re-fetching purchases (self-heal for pending orders).");
             FetchPurchases();
         }
 
@@ -236,13 +236,13 @@ namespace Wagenheimer.IAPHelper
         {
             if (IsInitialized)
             {
-                Debug.LogWarning("[IAPHelper] Já está inicializado.");
+                Debug.LogWarning("[IAPHelper] Already initialized.");
                 return;
             }
 
             if (_initializing)
             {
-                Debug.Log("[IAPHelper] Inicialização já em andamento.");
+                Debug.Log("[IAPHelper] Initialization already in progress.");
                 return;
             }
 
@@ -250,7 +250,7 @@ namespace Wagenheimer.IAPHelper
 
             try
             {
-                Debug.Log("[IAPHelper] Inicializando StoreController v5...");
+                Debug.Log("[IAPHelper] Initializing StoreController v5...");
 
                 _storeController = UnityIAPServices.StoreController();
 
@@ -258,13 +258,13 @@ namespace Wagenheimer.IAPHelper
 
                 _storeController.ProcessPendingOrdersOnPurchasesFetched(processPendingOnFetch);
 
-                Debug.Log("[IAPHelper] Conectando à loja...");
+                Debug.Log("[IAPHelper] Connecting to the store...");
                 await _storeController.Connect();
             }
             catch (Exception ex)
             {
                 _initializing = false;
-                Debug.LogError($"[IAPHelper] Exceção durante a inicialização: {ex.Message}\n{ex.StackTrace}");
+                Debug.LogError($"[IAPHelper] Exception during initialization: {ex.Message}\n{ex.StackTrace}");
                 OnConnectionFailed?.Invoke(ex.Message);
             }
         }
@@ -322,7 +322,7 @@ namespace Wagenheimer.IAPHelper
         private void HandleStoreConnected()
         {
             IsConnected = true;
-            Debug.Log("[IAPHelper] Conectado à loja com sucesso.");
+            Debug.Log("[IAPHelper] Connected to the store successfully.");
 
             FetchProducts();
 
@@ -336,13 +336,13 @@ namespace Wagenheimer.IAPHelper
         {
             IsConnected = false;
             _initializing = false;
-            Debug.LogError($"[IAPHelper] Desconectado da loja: {failure.message}");
+            Debug.LogError($"[IAPHelper] Disconnected from the store: {failure.message}");
             OnConnectionFailed?.Invoke(failure.message);
         }
 
         private void HandleAuthAccountChanged()
         {
-            Debug.Log("[IAPHelper] Conta de autenticação alterada. Re-buscando catálogo...");
+            Debug.Log("[IAPHelper] Auth account changed. Re-fetching catalog...");
             FetchProducts();
             FetchPurchases();
         }
@@ -355,13 +355,13 @@ namespace Wagenheimer.IAPHelper
         {
             if (!IsConnected)
             {
-                Debug.LogWarning("[IAPHelper] Não é possível buscar produtos: loja não conectada.");
+                Debug.LogWarning("[IAPHelper] Cannot fetch products: store not connected.");
                 return;
             }
 
             try
             {
-                Debug.Log("[IAPHelper] Buscando produtos...");
+                Debug.Log("[IAPHelper] Fetching products...");
 
                 var productDefinitions = new List<ProductDefinition>();
                 foreach (var product in products)
@@ -393,7 +393,7 @@ namespace Wagenheimer.IAPHelper
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[IAPHelper] Erro ao buscar produtos: {ex.Message}");
+                Debug.LogError($"[IAPHelper] Error fetching products: {ex.Message}");
             }
         }
 
@@ -403,13 +403,13 @@ namespace Wagenheimer.IAPHelper
             IsInitialized = true;
             _initializing = false;
 
-            Debug.Log($"[IAPHelper] Produtos carregados com sucesso: {fetchedProducts?.Count ?? 0}");
+            Debug.Log($"[IAPHelper] Products loaded successfully: {fetchedProducts?.Count ?? 0}");
 
             if (fetchedProducts != null)
             {
                 foreach (var p in fetchedProducts)
                 {
-                    Debug.Log($"  - {p.definition.id} ({p.definition.type}): {p.metadata?.localizedPriceString} (Disponível: {p.availableToPurchase})");
+                    Debug.Log($"  - {p.definition.id} ({p.definition.type}): {p.metadata?.localizedPriceString} (Available: {p.availableToPurchase})");
                 }
             }
 
@@ -421,7 +421,7 @@ namespace Wagenheimer.IAPHelper
         {
             _initializing = false;
             string reason = failure?.FailureReason.ToString() ?? "Unknown";
-            Debug.LogError($"[IAPHelper] Falha ao carregar produtos: {reason}");
+            Debug.LogError($"[IAPHelper] Failed to load products: {reason}");
             OnProductsFetchFailed?.Invoke(reason);
         }
 
@@ -433,18 +433,18 @@ namespace Wagenheimer.IAPHelper
         {
             if (!IsConnected)
             {
-                Debug.LogWarning("[IAPHelper] Não é possível buscar compras: loja não conectada.");
+                Debug.LogWarning("[IAPHelper] Cannot fetch purchases: store not connected.");
                 return;
             }
 
             try
             {
-                Debug.Log("[IAPHelper] Buscando compras existentes...");
+                Debug.Log("[IAPHelper] Fetching existing purchases...");
                 _storeController.FetchPurchases();
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[IAPHelper] Erro ao buscar compras: {ex.Message}");
+                Debug.LogError($"[IAPHelper] Error fetching purchases: {ex.Message}");
             }
         }
 
@@ -453,21 +453,21 @@ namespace Wagenheimer.IAPHelper
             int pendingCount = orders?.PendingOrders?.Count ?? 0;
             int confirmedCount = orders?.ConfirmedOrders?.Count ?? 0;
 
-            Debug.Log($"[IAPHelper] Compras buscadas: {pendingCount} pendentes, {confirmedCount} confirmadas.");
+            Debug.Log($"[IAPHelper] Purchases fetched: {pendingCount} pending, {confirmedCount} confirmed.");
 
             if (orders != null)
             {
-                // Confirmadas: garante que o conteúdo foi concedido (idempotente, cobre reinstalação/troca de aparelho).
+                // Confirmed: make sure the content was granted (idempotent, covers reinstall/device swap).
                 if (orders.ConfirmedOrders != null)
                 {
                     foreach (var order in orders.ConfirmedOrders)
                         GrantEntitlementIfNeeded(GetOrderProductId(order));
                 }
 
-                // Pendentes remanescentes de uma sessão anterior (ex: app foi fechado/morto pelo SO antes do
-                // ConfirmPurchase rodar, ou o listener temporário da compra original já tinha expirado por
-                // timeout). Sem isso, o pedido fica preso como "Pending" na loja para sempre e o jogador
-                // nunca recebe o conteúdo mesmo já tendo pago - concede e confirma agora.
+                // Leftover pending orders from a previous session (e.g. the app was closed/killed by the OS
+                // before ConfirmPurchase ran, or the original purchase's temporary listener had already
+                // timed out). Without this, the order stays stuck as "Pending" in the store forever and the
+                // player never receives the content even though they already paid - grant and confirm now.
                 if (orders.PendingOrders != null)
                 {
                     foreach (var order in orders.PendingOrders)
@@ -486,7 +486,7 @@ namespace Wagenheimer.IAPHelper
         {
             if (logPurchasesFetchFailures)
             {
-                Debug.LogWarning($"[IAPHelper] Falha ao buscar compras: {failure.message} ({failure.failureReason})");
+                Debug.LogWarning($"[IAPHelper] Failed to fetch purchases: {failure.message} ({failure.failureReason})");
             }
             OnPurchasesFetchFailed?.Invoke(failure.message);
         }
@@ -499,7 +499,7 @@ namespace Wagenheimer.IAPHelper
         {
             if (!IsConnected || !ProductsLoaded)
             {
-                Debug.LogError("[IAPHelper] Loja não está pronta para compras.");
+                Debug.LogError("[IAPHelper] Store is not ready for purchases.");
                 return;
             }
 
@@ -517,23 +517,23 @@ namespace Wagenheimer.IAPHelper
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[IAPHelper] Erro ao comprar produto '{productId}': {ex.Message}");
+                Debug.LogError($"[IAPHelper] Error purchasing product '{productId}': {ex.Message}");
             }
         }
 
         /// <summary>
-        /// Inicia uma compra e aguarda sua resolução (para dirigir feedback de UI: loading, sucesso, erro).
+        /// Starts a purchase and awaits its resolution (to drive UI feedback: loading, success, error).
         /// </summary>
         /// <remarks>
-        /// A concessão do conteúdo e a confirmação da ordem na loja NÃO dependem mais desta Task nem do seu
-        /// timeout: são feitas de forma permanente e centralizada em <see cref="HandlePurchasePending"/> e em
-        /// <see cref="HandlePurchasesFetched"/>, assinadas desde <see cref="RegisterEvents"/>. Isso significa
-        /// que, mesmo que esta chamada estoure o <paramref name="timeoutSeconds"/> (ex: o usuário demorou para
-        /// concluir o pagamento na UI da loja) ou que o form de compra já tenha sido fechado/destruído, a
-        /// compra ainda será concedida e confirmada corretamente assim que o evento da loja chegar - inclusive
-        /// em uma sessão futura, via <see cref="FetchPurchases"/> no boot ou ao retomar o foco do app.
-        /// <paramref name="onGrantContent"/> aqui serve apenas para sincronizar feedback imediato de UI
-        /// (ex: fechar o diálogo de compra) enquanto o form ainda está na tela.
+        /// Granting content and confirming the order with the store no longer depend on this Task or its
+        /// timeout: that's done permanently and centrally in <see cref="HandlePurchasePending"/> and in
+        /// <see cref="HandlePurchasesFetched"/>, subscribed since <see cref="RegisterEvents"/>. This means
+        /// that even if this call times out (<paramref name="timeoutSeconds"/> — e.g. the user took a while
+        /// to complete payment in the store's UI) or the purchase form has already been closed/destroyed, the
+        /// purchase will still be granted and confirmed correctly as soon as the store's event arrives -
+        /// including in a future session, via <see cref="FetchPurchases"/> on boot or on app resume.
+        /// <paramref name="onGrantContent"/> here only exists to sync immediate UI feedback
+        /// (e.g. closing the purchase dialog) while the form is still on screen.
         /// </remarks>
         public async Task<PurchaseResult> PurchaseAsync(string productId, Action onGrantContent = null, float timeoutSeconds = 60f)
         {
@@ -559,7 +559,7 @@ namespace Wagenheimer.IAPHelper
                     }
                     catch (Exception ex)
                     {
-                        Debug.LogError($"[IAPHelper] Erro ao notificar UI sobre liberação de conteúdo: {ex.Message}");
+                        Debug.LogError($"[IAPHelper] Error notifying UI about content grant: {ex.Message}");
                     }
                 }
             };
@@ -631,12 +631,12 @@ namespace Wagenheimer.IAPHelper
         private void HandlePurchasePending(PendingOrder order)
         {
             var productId = GetOrderProductId(order);
-            Debug.Log($"[IAPHelper] Compra pendente para o produto: {productId}");
+            Debug.Log($"[IAPHelper] Pending purchase for product: {productId}");
 
-            // Concede o conteúdo e confirma a ordem AQUI, de forma permanente - não depende de nenhuma UI
-            // estar ouvindo. Corrige o cenário onde a compra confirma depois do timeout de PurchaseAsync,
-            // ou depois que o form de compra já foi fechado/destruído (ex: app minimizado durante o
-            // checkout nativo da loja).
+            // Grant content and confirm the order HERE, permanently - this does not depend on any UI
+            // listening. Fixes the scenario where the purchase confirms after PurchaseAsync's timeout, or
+            // after the purchase form has already been closed/destroyed (e.g. app minimized during the
+            // store's native checkout).
             GrantEntitlementIfNeeded(productId);
             ConfirmPurchase(order);
 
@@ -644,9 +644,9 @@ namespace Wagenheimer.IAPHelper
         }
 
         /// <summary>
-        /// Dispara <see cref="OnEntitlementGranted"/> para <paramref name="productId"/> uma única vez por
-        /// sessão. Chamado a partir de todo caminho que possa indicar posse do produto: compra ao vivo,
-        /// restauração no boot e reconsulta ao retomar o foco.
+        /// Fires <see cref="OnEntitlementGranted"/> for <paramref name="productId"/> exactly once per
+        /// session. Called from every code path that can indicate ownership of the product: a live purchase,
+        /// a restore on boot, and a re-fetch on app resume.
         /// </summary>
         private void GrantEntitlementIfNeeded(string productId)
         {
@@ -656,7 +656,7 @@ namespace Wagenheimer.IAPHelper
             if (!_grantedProductIds.Add(productId))
                 return;
 
-            Debug.Log($"[IAPHelper] Concedendo entitlement para: {productId}");
+            Debug.Log($"[IAPHelper] Granting entitlement for: {productId}");
 
             try
             {
@@ -664,7 +664,7 @@ namespace Wagenheimer.IAPHelper
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[IAPHelper] Erro ao conceder entitlement para '{productId}': {ex.Message}");
+                Debug.LogError($"[IAPHelper] Error granting entitlement for '{productId}': {ex.Message}");
             }
         }
 
@@ -672,19 +672,19 @@ namespace Wagenheimer.IAPHelper
         {
             if (order == null)
             {
-                Debug.LogError("[IAPHelper] Não é possível confirmar: PendingOrder é null!");
+                Debug.LogError("[IAPHelper] Cannot confirm: PendingOrder is null!");
                 return;
             }
 
             try
             {
                 var productId = GetOrderProductId(order);
-                Debug.Log($"[IAPHelper] Confirmando ordem na loja para: {productId}");
+                Debug.Log($"[IAPHelper] Confirming order with the store for: {productId}");
                 _storeController.ConfirmPurchase(order);
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[IAPHelper] Erro ao confirmar compra: {ex.Message}");
+                Debug.LogError($"[IAPHelper] Error confirming purchase: {ex.Message}");
             }
         }
 
@@ -694,11 +694,11 @@ namespace Wagenheimer.IAPHelper
 
             if (order is ConfirmedOrder)
             {
-                Debug.Log($"[IAPHelper] Compra confirmada com sucesso: {productId}");
+                Debug.Log($"[IAPHelper] Purchase confirmed successfully: {productId}");
             }
             else if (order is FailedOrder failed)
             {
-                Debug.LogError($"[IAPHelper] Confirmação da compra falhou para: {productId} - {failed.Details}");
+                Debug.LogError($"[IAPHelper] Purchase confirmation failed for: {productId} - {failed.Details}");
             }
 
             OnPurchaseConfirmed?.Invoke(order);
@@ -706,13 +706,13 @@ namespace Wagenheimer.IAPHelper
 
         private void HandlePurchaseFailed(FailedOrder failedOrder)
         {
-            Debug.LogError($"[IAPHelper] Compra falhou: {failedOrder.FailureReason} - {failedOrder.Details}");
+            Debug.LogError($"[IAPHelper] Purchase failed: {failedOrder.FailureReason} - {failedOrder.Details}");
             OnPurchaseFailed?.Invoke(failedOrder);
         }
 
         private void HandlePurchaseDeferred(DeferredOrder deferredOrder)
         {
-            Debug.Log("[IAPHelper] Compra diferida (aguardando aprovação, ex: Ask-to-Buy).");
+            Debug.Log("[IAPHelper] Purchase deferred (awaiting approval, e.g. Ask-to-Buy).");
             OnPurchaseDeferred?.Invoke(deferredOrder);
         }
 
@@ -722,7 +722,7 @@ namespace Wagenheimer.IAPHelper
 
         private void HandleCheckEntitlement(Entitlement entitlement)
         {
-            Debug.Log($"[IAPHelper] Entitlement para '{entitlement.Product.definition.id}': {entitlement.Status}");
+            Debug.Log($"[IAPHelper] Entitlement for '{entitlement.Product.definition.id}': {entitlement.Status}");
             OnCheckEntitlement?.Invoke(entitlement);
         }
 
@@ -803,7 +803,7 @@ namespace Wagenheimer.IAPHelper
             var product = GetProduct(productId);
             if (product == null)
             {
-                Debug.LogWarning($"[IAPHelper] CheckEntitlement: produto '{productId}' não encontrado no cache.");
+                Debug.LogWarning($"[IAPHelper] CheckEntitlement: product '{productId}' not found in cache.");
                 return;
             }
 
@@ -816,11 +816,11 @@ namespace Wagenheimer.IAPHelper
 
         public void RestorePurchases(Action<bool, string> onComplete = null)
         {
-            Debug.Log("[IAPHelper] Restaurando compras...");
+            Debug.Log("[IAPHelper] Restoring purchases...");
 
             if (_storeController == null)
             {
-                Debug.LogError("[IAPHelper] Não é possível restaurar: StoreController é null.");
+                Debug.LogError("[IAPHelper] Cannot restore: StoreController is null.");
                 onComplete?.Invoke(false, "StoreController not initialized");
                 return;
             }
@@ -830,9 +830,9 @@ namespace Wagenheimer.IAPHelper
                 _storeController.RestoreTransactions((success, error) =>
                 {
                     if (success)
-                        Debug.Log("[IAPHelper] RestoreTransactions concluído com sucesso.");
+                        Debug.Log("[IAPHelper] RestoreTransactions completed successfully.");
                     else
-                        Debug.LogError($"[IAPHelper] RestoreTransactions falhou: {error}");
+                        Debug.LogError($"[IAPHelper] RestoreTransactions failed: {error}");
 
                     onComplete?.Invoke(success, error);
                 });

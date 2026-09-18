@@ -30,20 +30,20 @@ Or add directly to your `Packages/manifest.json`:
 
 ---
 
-## Restauração de Compras (Android vs iOS / macOS)
+## Purchase Restoration (Android vs iOS / macOS)
 
-### Como funcionava antigamente com `IAPListener` (Unity IAP v3/v4):
-No Unity IAP antigo, o componente `IAPListener` escutava a inicialização da loja (`IStoreListener.OnInitialized`). O Google Play enviava os recibos e o Unity IAP chamava `ProcessPurchase` automaticamente no boot para todos os produtos Não-Consumíveis existentes, disparando `onPurchaseComplete` e liberando o jogo ao reinstalar.
+### How this used to work with `IAPListener` (Unity IAP v3/v4):
+In the old Unity IAP, the `IAPListener` component listened to the store's initialization (`IStoreListener.OnInitialized`). Google Play sent the receipts and Unity IAP automatically called `ProcessPurchase` on boot for every existing Non-Consumable product, firing `onPurchaseComplete` and unlocking the game on reinstall.
 
-### Como funciona no Unity IAP v5 com `IAPHelper`:
-No Unity IAP v5, a consulta de compras anteriores é feita via `FetchPurchases()`, que dispara o evento `OnPurchasesFetched(Orders orders)`.
+### How it works in Unity IAP v5 with `IAPHelper`:
+In Unity IAP v5, querying previous purchases is done via `FetchPurchases()`, which fires the `OnPurchasesFetched(Orders orders)` event.
 
-| Plataforma | Comportamento Recomendado | Configuração | Motivo |
+| Platform | Recommended Behavior | Setting | Reason |
 | :--- | :--- | :--- | :--- |
-| **Android / Amazon** | **Automático no boot** | `autoRestorePurchases = true` | A consulta via Google Play / Amazon é **100% silenciosa** e não exige senha. Se o jogador reinstalar o jogo ou trocar de aparelho, as compras não-consumíveis (ex: "Desbloquear Jogo Completo") são recuperadas imediatamente na abertura. |
-| **iOS / macOS (Apple)** | **Manual via Botão** | `autoRestorePurchases = false` | As **App Store Review Guidelines** da Apple proíbem acionar restauração que possa solicitar credenciais de Apple ID sem consentimento explícito do usuário. No iOS/macOS deve-se usar um botão "Restaurar Compras" que chama `IAPHelper.RestorePurchases()`. |
+| **Android / Amazon** | **Automatic on boot** | `autoRestorePurchases = true` | The query via Google Play / Amazon is **100% silent** and requires no password. If the player reinstalls the game or switches devices, non-consumable purchases (e.g. "Unlock Full Game") are recovered immediately on launch. |
+| **iOS / macOS (Apple)** | **Manual via button** | `autoRestorePurchases = false` | Apple's **App Store Review Guidelines** forbid triggering a restore that could prompt for Apple ID credentials without explicit user consent. On iOS/macOS, use a "Restore Purchases" button that calls `IAPHelper.RestorePurchases()`. |
 
-### Configuração Recomendada no Boot do Jogo:
+### Recommended Setup at Game Boot:
 
 ```csharp
 if (!TryGetComponent<IAPHelper>(out IAPHelper))
@@ -51,29 +51,26 @@ if (!TryGetComponent<IAPHelper>(out IAPHelper))
     IAPHelper = gameObject.AddComponent<IAPHelper>();
 }
 
-// 1. Configura auto-restore inteligente por plataforma:
-//    - Android/Amazon: true (silencioso e automático ao reinstalar)
-//    - iOS/macOS: false (manual via botão UI)
+// 1. Smart platform-based auto-restore:
+//    - Android/Amazon: true (silent and automatic on reinstall)
+//    - iOS/macOS: false (manual via UI button)
 IAPHelper.autoRestorePurchases = IAPHelper.RecommendedAutoRestoreForCurrentPlatform;
 
-// 2. Callback disparado quando as compras da loja forem buscadas
-IAPHelper.OnPurchasesFetched += HandlePurchasesFetched;
+// 2. Single source of truth for "product granted": fires for both a live purchase and a
+//    restore (boot or app-resume re-fetch), even if the purchase screen has already closed.
+IAPHelper.OnEntitlementGranted += HandleEntitlementGranted;
 
-// 3. Fallback para checar se o jogo já está desbloqueado no Save local
+// 3. Fallback for checking whether the game is already unlocked in the local save
 IAPHelper.HasPurchasedFallback = id => SaveData != null && SaveData.UnlockedGame && id == "unlockfullgame";
 ```
 
-### Exemplo de Callback `HandlePurchasesFetched`:
+### Example `HandleEntitlementGranted` Callback:
 
 ```csharp
-private void HandlePurchasesFetched(Orders orders)
+private void HandleEntitlementGranted(string productId)
 {
-    // Verifica se o usuário já possui o produto 'unlockfullgame' confirmado na loja
-    if ((IAPHelper != null && IAPHelper.HasPurchased("unlockfullgame")) || 
-        (orders != null && orders.ConfirmedOrders.Count > 0))
-    {
-        UnlockFullGame();
-    }
+    if (productId == "unlockfullgame")
+        UnlockFullGame(); // idempotent: sets the save flag and saves, safe to call more than once
 }
 ```
 
