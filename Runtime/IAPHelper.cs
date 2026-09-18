@@ -32,6 +32,15 @@ namespace Wagenheimer.IAPHelper
         private StoreController _storeController;
         private bool _initializing;
 
+        /// <summary>
+        /// IDs de produtos já concedidos nesta sessão (evita disparar <see cref="OnEntitlementGranted"/>
+        /// repetidamente para a mesma compra ao reprocessar pedidos pendentes/confirmados).
+        /// </summary>
+        private readonly HashSet<string> _grantedProductIds = new HashSet<string>();
+
+        private float _lastResumeFetchTime = float.NegativeInfinity;
+        private const float ResumeFetchCooldownSeconds = 5f;
+
         #endregion
 
         #region Configuration
@@ -96,6 +105,20 @@ namespace Wagenheimer.IAPHelper
         public event Action<FailedOrder> OnPurchaseFailed;
         public event Action<DeferredOrder> OnPurchaseDeferred;
         public event Action<Entitlement> OnCheckEntitlement;
+
+        /// <summary>
+        /// Disparado exatamente uma vez por produto, assim que o helper determina que ele é de posse do
+        /// jogador — seja por uma compra ao vivo (<see cref="PendingOrder"/>), por uma restauração no boot
+        /// (<see cref="FetchPurchases"/>) ou por uma reconsulta ao retomar o foco do app.
+        /// <para>
+        /// Diferente do callback local passado para <see cref="PurchaseAsync"/>, esta assinatura é permanente:
+        /// deve ser usada pelo jogo (tipicamente uma única vez, no boot) para liberar o conteúdo comprado
+        /// (ex: <c>SaveData.UnlockedGame = true</c>). Isso garante que a compra seja concedida mesmo que a
+        /// UI de compra já tenha sido fechada, tenha estourado o timeout, ou o app tenha sido minimizado
+        /// durante o fluxo de pagamento da loja.
+        /// </para>
+        /// </summary>
+        public event Action<string> OnEntitlementGranted;
 
         #endregion
 
@@ -170,6 +193,39 @@ namespace Wagenheimer.IAPHelper
         protected virtual void OnDestroy()
         {
             UnregisterEvents();
+        }
+
+        /// <summary>
+        /// Reconsulta compras pendentes quando o app volta ao primeiro plano. Cobre o caso em que o usuário
+        /// finaliza o pagamento na UI nativa da loja (Google Play / App Store), que roda por cima do app e
+        /// pode deixá-lo pausado/sem foco por tempo suficiente para o timeout de <see cref="PurchaseAsync"/>
+        /// expirar antes da confirmação chegar.
+        /// </summary>
+        protected virtual void OnApplicationPause(bool pauseStatus)
+        {
+            if (!pauseStatus)
+                TryRefetchPurchasesOnResume();
+        }
+
+        protected virtual void OnApplicationFocus(bool hasFocus)
+        {
+            if (hasFocus)
+                TryRefetchPurchasesOnResume();
+        }
+
+        private void TryRefetchPurchasesOnResume()
+        {
+            if (!IsConnected || !autoRestorePurchases)
+                return;
+
+            // OnApplicationPause e OnApplicationFocus costumam disparar quase juntos ao retomar o app;
+            // evita duas buscas redundantes em sequência.
+            if (Time.unscaledTime - _lastResumeFetchTime < ResumeFetchCooldownSeconds)
+                return;
+
+            _lastResumeFetchTime = Time.unscaledTime;
+            Debug.Log("[IAPHelper] App retomou o foco - reconsultando compras (auto-heal de pedidos pendentes).");
+            FetchPurchases();
         }
 
         #endregion
@@ -399,6 +455,30 @@ namespace Wagenheimer.IAPHelper
 
             Debug.Log($"[IAPHelper] Compras buscadas: {pendingCount} pendentes, {confirmedCount} confirmadas.");
 
+            if (orders != null)
+            {
+                // Confirmadas: garante que o conteúdo foi concedido (idempotente, cobre reinstalação/troca de aparelho).
+                if (orders.ConfirmedOrders != null)
+                {
+                    foreach (var order in orders.ConfirmedOrders)
+                        GrantEntitlementIfNeeded(GetOrderProductId(order));
+                }
+
+                // Pendentes remanescentes de uma sessão anterior (ex: app foi fechado/morto pelo SO antes do
+                // ConfirmPurchase rodar, ou o listener temporário da compra original já tinha expirado por
+                // timeout). Sem isso, o pedido fica preso como "Pending" na loja para sempre e o jogador
+                // nunca recebe o conteúdo mesmo já tendo pago - concede e confirma agora.
+                if (orders.PendingOrders != null)
+                {
+                    foreach (var order in orders.PendingOrders)
+                    {
+                        var productId = GetOrderProductId(order);
+                        GrantEntitlementIfNeeded(productId);
+                        ConfirmPurchase(order);
+                    }
+                }
+            }
+
             OnPurchasesFetched?.Invoke(orders);
         }
 
@@ -441,23 +521,37 @@ namespace Wagenheimer.IAPHelper
             }
         }
 
+        /// <summary>
+        /// Inicia uma compra e aguarda sua resolução (para dirigir feedback de UI: loading, sucesso, erro).
+        /// </summary>
+        /// <remarks>
+        /// A concessão do conteúdo e a confirmação da ordem na loja NÃO dependem mais desta Task nem do seu
+        /// timeout: são feitas de forma permanente e centralizada em <see cref="HandlePurchasePending"/> e em
+        /// <see cref="HandlePurchasesFetched"/>, assinadas desde <see cref="RegisterEvents"/>. Isso significa
+        /// que, mesmo que esta chamada estoure o <paramref name="timeoutSeconds"/> (ex: o usuário demorou para
+        /// concluir o pagamento na UI da loja) ou que o form de compra já tenha sido fechado/destruído, a
+        /// compra ainda será concedida e confirmada corretamente assim que o evento da loja chegar - inclusive
+        /// em uma sessão futura, via <see cref="FetchPurchases"/> no boot ou ao retomar o foco do app.
+        /// <paramref name="onGrantContent"/> aqui serve apenas para sincronizar feedback imediato de UI
+        /// (ex: fechar o diálogo de compra) enquanto o form ainda está na tela.
+        /// </remarks>
         public async Task<PurchaseResult> PurchaseAsync(string productId, Action onGrantContent = null, float timeoutSeconds = 60f)
         {
             var tcs = new TaskCompletionSource<PurchaseResult>();
 
             if (HasPurchased(productId))
             {
+                onGrantContent?.Invoke();
                 return new PurchaseResult { IsSuccess = true, IsAlreadyOwned = true, ProductId = productId };
             }
 
-            Action<PendingOrder> onPending = null;
+            Action<string> onGranted = null;
             Action<Order> onConfirmed = null;
             Action<FailedOrder> onFailed = null;
 
-            onPending = pendingOrder =>
+            onGranted = grantedProductId =>
             {
-                var id = GetOrderProductId(pendingOrder);
-                if (id == productId)
+                if (grantedProductId == productId)
                 {
                     try
                     {
@@ -465,10 +559,8 @@ namespace Wagenheimer.IAPHelper
                     }
                     catch (Exception ex)
                     {
-                        Debug.LogError($"[IAPHelper] Erro ao liberar conteúdo: {ex.Message}");
+                        Debug.LogError($"[IAPHelper] Erro ao notificar UI sobre liberação de conteúdo: {ex.Message}");
                     }
-
-                    ConfirmPurchase(pendingOrder);
                 }
             };
 
@@ -509,12 +601,12 @@ namespace Wagenheimer.IAPHelper
 
             void Cleanup()
             {
-                OnPurchasePending -= onPending;
+                OnEntitlementGranted -= onGranted;
                 OnPurchaseConfirmed -= onConfirmed;
                 OnPurchaseFailed -= onFailed;
             }
 
-            OnPurchasePending += onPending;
+            OnEntitlementGranted += onGranted;
             OnPurchaseConfirmed += onConfirmed;
             OnPurchaseFailed += onFailed;
 
@@ -540,7 +632,40 @@ namespace Wagenheimer.IAPHelper
         {
             var productId = GetOrderProductId(order);
             Debug.Log($"[IAPHelper] Compra pendente para o produto: {productId}");
+
+            // Concede o conteúdo e confirma a ordem AQUI, de forma permanente - não depende de nenhuma UI
+            // estar ouvindo. Corrige o cenário onde a compra confirma depois do timeout de PurchaseAsync,
+            // ou depois que o form de compra já foi fechado/destruído (ex: app minimizado durante o
+            // checkout nativo da loja).
+            GrantEntitlementIfNeeded(productId);
+            ConfirmPurchase(order);
+
             OnPurchasePending?.Invoke(order);
+        }
+
+        /// <summary>
+        /// Dispara <see cref="OnEntitlementGranted"/> para <paramref name="productId"/> uma única vez por
+        /// sessão. Chamado a partir de todo caminho que possa indicar posse do produto: compra ao vivo,
+        /// restauração no boot e reconsulta ao retomar o foco.
+        /// </summary>
+        private void GrantEntitlementIfNeeded(string productId)
+        {
+            if (string.IsNullOrEmpty(productId) || productId == "unknown")
+                return;
+
+            if (!_grantedProductIds.Add(productId))
+                return;
+
+            Debug.Log($"[IAPHelper] Concedendo entitlement para: {productId}");
+
+            try
+            {
+                OnEntitlementGranted?.Invoke(productId);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[IAPHelper] Erro ao conceder entitlement para '{productId}': {ex.Message}");
+            }
         }
 
         public void ConfirmPurchase(PendingOrder order)

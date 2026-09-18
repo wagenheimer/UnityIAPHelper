@@ -22,7 +22,9 @@ Or add directly to your `Packages/manifest.json`:
 
 - **Unity IAP v5 Native**: Built for `com.unity.purchasing 5.4.3+` with the StoreController v5 lifecycle.
 - **Two-Step Purchase Flow**: Mandatory pending confirmation prevents lost purchases and fulfills modern store requirements.
+- **Persistent Purchase Fulfillment**: Granting content and confirming orders is handled centrally by `IAPHelper` itself (not tied to a purchase-button UI's lifetime), plus an automatic re-fetch on app resume — so a purchase that confirms after the buy dialog closed (or after the app was minimized during the store checkout) is never lost. See `OnEntitlementGranted`.
 - **Auto-Update Checker**: Built-in editor notification when newer releases are published on GitHub.
+- **Built-in Setup Auditor**: `Tools > Wagenheimer > IAP Helper > Verify Setup...` scans your project for the most common IAP misconfigurations (mismatched product IDs, empty catalogs, missing save-system wiring, outdated package version) — also runnable headless for CI/AI agents. See `IAP-CHECKLIST.md`.
 - **Decoupled Architecture**: Easily integrate with any game save system via `IAPHelper.HasPurchasedFallback`.
 - **Cross-Platform Purchase Restoration**: Automatic background restoration on Android/Amazon and explicit compliance with Apple App Store guidelines on iOS/macOS.
 
