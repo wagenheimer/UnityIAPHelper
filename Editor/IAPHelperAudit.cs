@@ -290,8 +290,6 @@ namespace Wagenheimer.IAPHelper.Editor
             return catalogIds;
         }
 
-        private static void AuditFormInstances(List<AuditResult> results, List<FoundComponent<BaseIAPForm>> formInstances)
-        {
         private static void AuditFormAndButtonInstances(
             List<AuditResult> results,
             List<FoundComponent<BaseIAPForm>> formInstances,
