@@ -348,3 +348,4 @@ namespace Wagenheimer.IAPHelper.UI
 public class IAPProductButton : Wagenheimer.IAPHelper.UI.IAPProductButton
 {
 }
+

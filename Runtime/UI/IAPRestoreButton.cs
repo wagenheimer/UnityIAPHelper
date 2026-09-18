@@ -201,3 +201,4 @@ namespace Wagenheimer.IAPHelper.UI
 public class IAPRestoreButton : Wagenheimer.IAPHelper.UI.IAPRestoreButton
 {
 }
+

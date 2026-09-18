@@ -123,6 +123,16 @@ namespace Wagenheimer.IAPHelper
         /// </summary>
         public event Action<string> OnEntitlementGranted;
 
+        /// <summary>
+        /// Fired when an Apple App Store promotional purchase is initiated by the player from the App Store page.
+        /// </summary>
+        public event Action<Product> OnPromotionalPurchaseIntercepted;
+
+        /// <summary>
+        /// Fired when an entitlement is revoked by the store (e.g. Apple refund or family sharing cancellation).
+        /// </summary>
+        public event Action<string> OnEntitlementRevoked;
+
         #endregion
 
         #region Properties
@@ -298,6 +308,12 @@ namespace Wagenheimer.IAPHelper
             _storeController.OnCheckEntitlement += HandleCheckEntitlement;
 
             _storeController.OnAuthAccountChanged += HandleAuthAccountChanged;
+
+            if (_storeController.AppleStoreExtendedPurchaseService != null)
+            {
+                _storeController.AppleStoreExtendedPurchaseService.OnPromotionalPurchaseIntercepted += HandlePromotionalPurchaseIntercepted;
+                _storeController.AppleStoreExtendedPurchaseService.OnEntitlementRevoked += HandleAppleEntitlementRevoked;
+            }
         }
 
         private void UnregisterEvents()
@@ -321,6 +337,12 @@ namespace Wagenheimer.IAPHelper
             _storeController.OnCheckEntitlement -= HandleCheckEntitlement;
 
             _storeController.OnAuthAccountChanged -= HandleAuthAccountChanged;
+
+            if (_storeController.AppleStoreExtendedPurchaseService != null)
+            {
+                _storeController.AppleStoreExtendedPurchaseService.OnPromotionalPurchaseIntercepted -= HandlePromotionalPurchaseIntercepted;
+                _storeController.AppleStoreExtendedPurchaseService.OnEntitlementRevoked -= HandleAppleEntitlementRevoked;
+            }
         }
 
         #endregion
@@ -753,6 +775,52 @@ namespace Wagenheimer.IAPHelper
             OnPurchaseDeferred?.Invoke(deferredOrder);
         }
 
+        private void HandlePromotionalPurchaseIntercepted(Product product)
+        {
+            Debug.Log($"[IAPHelper] Apple promotional purchase intercepted: {product.definition.id}");
+            try
+            {
+                OnPromotionalPurchaseIntercepted?.Invoke(product);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[IAPHelper] Error in OnPromotionalPurchaseIntercepted callback: {ex.Message}");
+            }
+
+            // CRITICAL per Apple StoreKit guidelines: must call ContinuePromotionalPurchases() or purchase hangs
+            _storeController.AppleStoreExtendedPurchaseService?.ContinuePromotionalPurchases();
+        }
+
+        private void HandleAppleEntitlementRevoked(string productId)
+        {
+            Debug.Log($"[IAPHelper] Entitlement revoked by store (refund/cancellation): {productId}");
+            _grantedProductIds.Remove(productId);
+
+            var config = GetProductConfig(productId);
+            if (config != null && !string.IsNullOrEmpty(config.playerPrefsFallbackKey))
+            {
+                try
+                {
+                    PlayerPrefs.DeleteKey(config.playerPrefsFallbackKey);
+                    PlayerPrefs.Save();
+                    Debug.Log($"[IAPHelper] PlayerPrefs fallback key deleted: {config.playerPrefsFallbackKey}");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[IAPHelper] Error clearing fallback key on revocation for '{productId}': {ex.Message}");
+                }
+            }
+
+            try
+            {
+                OnEntitlementRevoked?.Invoke(productId);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[IAPHelper] Error in OnEntitlementRevoked callback: {ex.Message}");
+            }
+        }
+
         #endregion
 
         #region Entitlement Checking
@@ -859,7 +927,13 @@ namespace Wagenheimer.IAPHelper
                                 foreach (var info in confirmed.Info.PurchasedProductInfo)
                                 {
                                     if (info.productId == productId)
+                                    {
+                                        if (info.subscriptionInfo != null)
+                                        {
+                                            return info.subscriptionInfo.IsSubscribed() == Result.True;
+                                        }
                                         return true;
+                                    }
                                 }
                             }
                         }
@@ -897,7 +971,7 @@ namespace Wagenheimer.IAPHelper
 
         #endregion
 
-        #region Public Methods - Restore
+        #region Public Methods - Restore & Store Extensions
 
         public void RestorePurchases(Action<bool, string> onComplete = null)
         {
@@ -926,6 +1000,22 @@ namespace Wagenheimer.IAPHelper
             {
                 FetchPurchases();
                 onComplete?.Invoke(true, null);
+            }
+        }
+
+        /// <summary>
+        /// Presents the Apple App Store code redemption sheet for promo/offer codes.
+        /// Only functional on iOS/macOS; logs a warning on other platforms.
+        /// </summary>
+        public void PresentAppleCodeRedemptionSheet()
+        {
+            if (_storeController?.AppleStoreExtendedPurchaseService != null)
+            {
+                _storeController.AppleStoreExtendedPurchaseService.PresentCodeRedemptionSheet();
+            }
+            else
+            {
+                Debug.LogWarning("[IAPHelper] PresentCodeRedemptionSheet is only available on Apple platforms.");
             }
         }
 

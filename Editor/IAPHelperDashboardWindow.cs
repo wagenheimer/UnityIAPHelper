@@ -480,3 +480,4 @@ namespace Wagenheimer.IAPHelper.Editor
         #endregion
     }
 }
+

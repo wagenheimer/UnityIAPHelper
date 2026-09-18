@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Product Catalog**: Live visual table of configured products across platforms.
   - **Store Release Checklist**: Interactive pre-flight checklist for Google Play, App Store Connect, and Amazon with local `EditorPrefs` persistence.
   - **Docs & Updates**: Built-in GitHub update checker and documentation links.
+- **Apple & Store Platform Extensions**:
+  - `OnPromotionalPurchaseIntercepted`: Intercepts Apple App Store page promotional purchases and safely calls `ContinuePromotionalPurchases()` to prevent order stalls.
+  - `OnEntitlementRevoked`: Listens to Apple StoreKit 2 refund/revocation events, clearing local ownership and fallback keys automatically.
+  - `PresentAppleCodeRedemptionSheet()`: Helper to display the Apple promo/offer code redemption sheet.
+  - Subscription verification: checks `subscriptionInfo.IsSubscribed() == Result.True` for active subscriptions.
 - **Custom Modern Inspectors**:
   - `IAPHelperEditor`: Redesigned inspector with status diagnostics and visual product management.
   - `IAPProductButtonEditor`: Catalog dropdown selector, binding status badges, and 1-click component auto-resolve.

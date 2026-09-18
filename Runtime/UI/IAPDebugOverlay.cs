@@ -259,3 +259,4 @@ namespace Wagenheimer.IAPHelper.UI
 public class IAPDebugOverlay : Wagenheimer.IAPHelper.UI.IAPDebugOverlay
 {
 }
+
