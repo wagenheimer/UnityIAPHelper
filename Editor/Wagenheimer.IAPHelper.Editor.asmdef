@@ -1,8 +1,11 @@
-﻿{
+{
     "name": "Wagenheimer.IAPHelper.Editor",
     "rootNamespace": "Wagenheimer.IAPHelper.Editor",
     "references": [
-        "Wagenheimer.IAPHelper"
+        "Wagenheimer.IAPHelper",
+        "Unity.Purchasing",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [
         "Editor"

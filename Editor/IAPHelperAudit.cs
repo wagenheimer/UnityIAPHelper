@@ -52,7 +52,7 @@ namespace Wagenheimer.IAPHelper.Editor
         [MenuItem("Tools/Wagenheimer/IAP Helper/Verify Setup...", priority = 100)]
         public static void OpenWindow()
         {
-            IAPHelperAuditWindow.ShowWindow(RunAudit());
+            IAPHelperDashboardWindow.OpenAuditTab();
         }
 
         /// <summary>
@@ -77,6 +77,7 @@ namespace Wagenheimer.IAPHelper.Editor
 
             var helperInstances = FindAllComponents<IAPHelper>();
             var formInstances = FindAllComponents<BaseIAPForm>();
+            var buttonInstances = FindAllComponents<UI.IAPProductButton>();
             var csFiles = SafeGetAllScripts();
 
             var runtimeAddComponentSites = FindRuntimeAddComponentSites(csFiles);
@@ -85,9 +86,9 @@ namespace Wagenheimer.IAPHelper.Editor
             var effectiveCatalogIds = AuditHelperInstances(
                 results, helperInstances, runtimeAddComponentSites, explicitProductsOverrideSites);
 
-            AuditFormInstances(results, formInstances);
-            AuditProductIdCrossReference(results, formInstances, effectiveCatalogIds);
-            AuditSourceWiring(results, csFiles);
+            AuditFormAndButtonInstances(results, formInstances, buttonInstances);
+            AuditProductIdCrossReference(results, formInstances, buttonInstances, effectiveCatalogIds);
+            AuditSourceWiring(results, csFiles, helperInstances);
             AuditPackageVersion(results);
 
             return results;
@@ -291,15 +292,21 @@ namespace Wagenheimer.IAPHelper.Editor
 
         private static void AuditFormInstances(List<AuditResult> results, List<FoundComponent<BaseIAPForm>> formInstances)
         {
-            if (formInstances.Count == 0)
+        private static void AuditFormAndButtonInstances(
+            List<AuditResult> results,
+            List<FoundComponent<BaseIAPForm>> formInstances,
+            List<FoundComponent<UI.IAPProductButton>> buttonInstances)
+        {
+            int totalUiCount = formInstances.Count + buttonInstances.Count;
+            if (totalUiCount == 0)
             {
                 results.Add(new AuditResult
                 {
-                    Category = "BaseIAPForm",
-                    Title = "No IAP purchase form found in the project",
+                    Category = "Purchase UI",
+                    Title = "No IAP purchase form or button found in the project",
                     Severity = AuditSeverity.Warning,
-                    Detail = "No BaseIAPForm subclass was found in prefabs/scenes. If the game purchases products without dedicated UI, ignore this warning.",
-                    FixHint = null
+                    Detail = "No BaseIAPForm or IAPProductButton was found in prefabs/scenes. If the game purchases products without dedicated UI, ignore this warning.",
+                    FixHint = "Add an IAPProductButton or BaseIAPForm component to your shop/purchase prefabs."
                 });
                 return;
             }
@@ -318,18 +325,38 @@ namespace Wagenheimer.IAPHelper.Editor
                     });
                 }
             }
+
+            foreach (var found in buttonInstances)
+            {
+                if (string.IsNullOrWhiteSpace(found.Component.productId))
+                {
+                    results.Add(new AuditResult
+                    {
+                        Category = "IAPProductButton",
+                        Title = "IAP product button with no productId configured",
+                        Severity = AuditSeverity.Fail,
+                        Detail = found.Location,
+                        FixHint = "Fill in the 'productId' field in the Inspector matching an id in IAPHelper.products."
+                    });
+                }
+            }
         }
 
         private static void AuditProductIdCrossReference(
             List<AuditResult> results,
             List<FoundComponent<BaseIAPForm>> formInstances,
+            List<FoundComponent<UI.IAPProductButton>> buttonInstances,
             HashSet<string> catalogIds)
         {
+            var referencedIds = new HashSet<string>();
+
             foreach (var found in formInstances)
             {
                 var productId = found.Component.productId;
                 if (string.IsNullOrWhiteSpace(productId))
-                    continue; // already reported in AuditFormInstances
+                    continue;
+
+                referencedIds.Add(productId);
 
                 if (!catalogIds.Contains(productId))
                 {
@@ -339,61 +366,95 @@ namespace Wagenheimer.IAPHelper.Editor
                         Title = $"Form references productId '{productId}' that isn't in any known IAPHelper catalog",
                         Severity = AuditSeverity.Fail,
                         Detail = found.Location,
-                        FixHint = "This is the most common cause of the 'bought it but nothing happened' bug class: the form tries to purchase/check an id that IAPHelper.products doesn't know about, so HasPurchased()/GetProduct() never find the product. Make the 'id' in IAPHelper.products and the form's 'productId' identical (case-sensitive)."
+                        FixHint = "Make the 'id' in IAPHelper.products and the form's 'productId' identical (case-sensitive)."
                     });
                 }
             }
 
-            if (formInstances.Count > 0 && catalogIds.Count > 0)
+            foreach (var found in buttonInstances)
             {
-                var referencedIds = new HashSet<string>(formInstances.Select(f => f.Component.productId).Where(id => !string.IsNullOrWhiteSpace(id)));
+                var productId = found.Component.productId;
+                if (string.IsNullOrWhiteSpace(productId))
+                    continue;
+
+                referencedIds.Add(productId);
+
+                if (!catalogIds.Contains(productId))
+                {
+                    results.Add(new AuditResult
+                    {
+                        Category = "Product ID Consistency",
+                        Title = $"IAPProductButton references productId '{productId}' that isn't in any known IAPHelper catalog",
+                        Severity = AuditSeverity.Fail,
+                        Detail = found.Location,
+                        FixHint = "Make the 'id' in IAPHelper.products and the button's 'productId' identical (case-sensitive)."
+                    });
+                }
+            }
+
+            if ((formInstances.Count > 0 || buttonInstances.Count > 0) && catalogIds.Count > 0)
+            {
                 var orphanCatalogIds = catalogIds.Except(referencedIds).ToList();
                 if (orphanCatalogIds.Count > 0)
                 {
                     results.Add(new AuditResult
                     {
                         Category = "Product ID Consistency",
-                        Title = "Product(s) in the catalog with no form referencing them",
+                        Title = "Product(s) in catalog with no UI component referencing them",
                         Severity = AuditSeverity.Info,
                         Detail = string.Join(", ", orphanCatalogIds),
-                        FixHint = "Not necessarily an error (the product may be purchased directly via IAPHelper.PurchaseAsync without a BaseIAPForm), but confirm it isn't a forgotten catalog entry."
+                        FixHint = "Confirm whether these products are intended to be purchased programmatically via IAPHelper.PurchaseAsync."
                     });
                 }
             }
         }
 
-        private static void AuditSourceWiring(List<AuditResult> results, List<string> csFiles)
+        private static void AuditSourceWiring(
+            List<AuditResult> results,
+            List<string> csFiles,
+            List<FoundComponent<IAPHelper>> helperInstances)
         {
-            bool hasFallback = AnyFileMatches(csFiles, @"HasPurchasedFallback\s*=");
+            bool hasFallbackInCode = AnyFileMatches(csFiles, @"HasPurchasedFallback\s*=");
+            bool hasConfiguredPlayerPrefsFallback = helperInstances.Any(h =>
+                h.Component.products != null &&
+                h.Component.products.Any(p => !string.IsNullOrEmpty(p.playerPrefsFallbackKey)));
+
+            bool hasFallback = hasFallbackInCode || hasConfiguredPlayerPrefsFallback;
+
             results.Add(new AuditResult
             {
                 Category = "Game Save Integration",
-                Title = hasFallback ? "HasPurchasedFallback is configured" : "HasPurchasedFallback was not found in source",
+                Title = hasFallback ? "Product ownership fallback is configured" : "No ownership fallback was found in code or catalog",
                 Severity = hasFallback ? AuditSeverity.Pass : AuditSeverity.Warning,
                 Detail = hasFallback
-                    ? "Found at least one assignment to IAPHelper.HasPurchasedFallback."
-                    : "Without this hook, IAPHelper.HasPurchased() can only answer based on the StoreController's cache — if the app opens offline, the local 'already purchased' check can fail even though the game's save data already marks it as unlocked.",
-                FixHint = hasFallback ? null : "At game boot: IAPHelper.HasPurchasedFallback = id => SaveData.UnlockedGame && id == \"unlockfullgame\";"
+                    ? (hasFallbackInCode ? "Found IAPHelper.HasPurchasedFallback in code." : "Found playerPrefsFallbackKey configured in IAPHelper products.")
+                    : "Without this hook, IAPHelper.HasPurchased() can only answer based on the StoreController's cache — if the app opens offline, the local check can fail even though the game's save data already marks it as unlocked.",
+                FixHint = hasFallback ? null : "Assign IAPHelper.HasPurchasedFallback in code, or configure playerPrefsFallbackKey on your non-consumable products."
             });
 
             bool hasEntitlementListener = AnyFileMatches(csFiles, @"OnEntitlementGranted\s*\+=");
             bool hasPurchasesFetchedListener = AnyFileMatches(csFiles, @"OnPurchasesFetched\s*\+=");
+            bool hasUnityEventWiring = helperInstances.Any(h =>
+                h.Component.products != null &&
+                h.Component.products.Any(p => p.onEntitlementGranted != null && p.onEntitlementGranted.GetPersistentEventCount() > 0));
+
+            bool isEntitlementHandled = hasEntitlementListener || hasUnityEventWiring;
 
             results.Add(new AuditResult
             {
                 Category = "Game Save Integration",
-                Title = hasEntitlementListener
-                    ? "OnEntitlementGranted is being listened to"
+                Title = isEntitlementHandled
+                    ? (hasEntitlementListener ? "OnEntitlementGranted is being listened to in code" : "Products have onEntitlementGranted UnityEvents wired in Inspector")
                     : (hasPurchasesFetchedListener
                         ? "Only OnPurchasesFetched is being listened to (consider migrating to OnEntitlementGranted)"
-                        : "No purchase-grant listener found in source"),
-                Severity = hasEntitlementListener ? AuditSeverity.Pass : (hasPurchasesFetchedListener ? AuditSeverity.Warning : AuditSeverity.Fail),
-                Detail = hasEntitlementListener
-                    ? "Found at least one subscription to IAPHelper.OnEntitlementGranted (permanent event, covers live purchases + restore)."
-                    : hasPurchasesFetchedListener
-                        ? "OnPurchasesFetched only fires from FetchPurchases() (boot/restore); prefer also subscribing to OnEntitlementGranted, which covers purchases completed live and is the single source of truth for 'product granted'."
-                        : "Without either, nothing in the game reacts when IAPHelper grants a product - the game's save data (e.g. SaveData.UnlockedGame) will never be updated.",
-                FixHint = hasEntitlementListener ? null : "At game boot: IAPHelper.Instance.OnEntitlementGranted += productId => { if (productId == \"unlockfullgame\") UnlockFullGame(); };"
+                        : "No purchase-grant listener found"),
+                Severity = isEntitlementHandled ? AuditSeverity.Pass : (hasPurchasesFetchedListener ? AuditSeverity.Warning : AuditSeverity.Fail),
+                Detail = isEntitlementHandled
+                    ? (hasEntitlementListener
+                        ? "Found at least one subscription to IAPHelper.OnEntitlementGranted (covers live purchases + restore)."
+                        : "Found persistent UnityEvent listeners wired on IAPHelper product entries.")
+                    : "Without a grant listener, nothing in the game reacts when IAPHelper confirms a purchase or restore.",
+                FixHint = isEntitlementHandled ? null : "Subscribe to IAPHelper.Instance.OnEntitlementGranted at boot, or wire methods into OnEntitlementGranted in the IAPHelper Inspector."
             });
         }
 

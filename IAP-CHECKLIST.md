@@ -2,11 +2,10 @@
 
 Two layers of verification for a project's purchase flow that uses `com.wagenheimer.iaphelper`:
 
-1. **Automated** — `Tools > Wagenheimer > IAP Helper > Verify Setup...` in the Editor (or in batch mode, see
+1. **Automated** — `Window > Wagenheimer > IAP Helper Dashboard` (Setup Audit tab) or `Tools > Wagenheimer > IAP Helper > Verify Setup...` in the Editor (or in batch mode, see
    [Instructions for AI Agents](#instructions-for-ai-agents-claude-code-etc)). Covers everything that can be
    inferred from prefabs, scenes, and source code.
-2. **Manual** — items that only exist inside the store consoles (Google Play Console, App Store Connect). No
-   local tool can verify these; follow the list below.
+2. **Manual** — items that only exist inside the store consoles (Google Play Console, App Store Connect). Track them directly inside the **Store Checklist** tab in the Dashboard.
 
 Use this entire checklist **before publishing** any build with IAP, and whenever investigating a report like
 "I bought it and nothing happened" / "still see ads after buying" / "stuck on a level/gate that should have
@@ -16,21 +15,19 @@ been unlocked."
 
 ## 1. Automated verification (runs in the Editor)
 
-Run `Tools > Wagenheimer > IAP Helper > Verify Setup...`. The tool scans the project and reports:
+Open the **IAP Helper Dashboard** (`Window > Wagenheimer > IAP Helper Dashboard`) and check the **Setup Audit** tab. The tool scans the project and reports:
 
 - [ ] `com.unity.purchasing` installed, version ≥ 5.4.3
 - [ ] At least one `IAPHelper` present, either as a prefab/scene component or instantiated at runtime via
       `AddComponent<IAPHelper>()` (and not more than one serialized instance, unless intentional)
 - [ ] `IAPHelper.products` is not empty and no `id` is blank or duplicated
-- [ ] Every `BaseIAPForm` (purchase form) has `productId` filled in
-- [ ] **Every `productId` used by a form exists in some `IAPHelper`'s catalog** — the most common cause of
-      the "bought it and nothing changed" bug: the form tries to purchase/check an id that
+- [ ] Every `BaseIAPForm` or `IAPProductButton` has `productId` filled in
+- [ ] **Every `productId` used by a form or button exists in some `IAPHelper`'s catalog** — the most common cause of
+      the "bought it and nothing changed" bug: the form/button tries to purchase/check an id that
       `IAPHelper.products` doesn't know about, so `HasPurchased()`/`GetProduct()` never find the product
-- [ ] `HasPurchasedFallback` is assigned somewhere in code (integrates with the game's local save data)
-- [ ] `OnEntitlementGranted` is being listened to somewhere in code (the permanent event that grants the
-      purchased content — see section 3)
-- [ ] The installed package is `>= 1.1.0` (includes persistent purchase grant/confirmation; earlier
-      versions relied on a temporary listener that expires after 60s or when the purchase screen closes)
+- [ ] Local ownership fallback is configured (either `IAPHelper.HasPurchasedFallback` in code or `playerPrefsFallbackKey` in the catalog)
+- [ ] Purchase granting is wired (either `OnEntitlementGranted` in code or persistent `onEntitlementGranted` UnityEvents in the Inspector)
+- [ ] The installed package is `>= 1.2.0` (includes prefab components, multi-product events, and persistent purchase grant/confirmation)
 
 Failures (❌) must be fixed before publishing. Warnings (⚠️) deserve a second look but may be intentional
 depending on the project.

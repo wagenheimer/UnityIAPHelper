@@ -1,9 +1,30 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.2.0] - 2026-09-17
+
+### Added
+- **Zero-Code Prefab UI Components**:
+  - `IAPProductButton`: Drop-in component for UI prefabs that binds to buttons, localized price labels, title, description, loading indicators, and owned badges with configurable behavior when owned (disable, hide, custom badge).
+  - `IAPRestoreButton`: Platform-compliant restore button that automatically appears on iOS/macOS (mandated by Apple App Store Review Guideline 3.1.1) and auto-hides on Android/Amazon.
+  - `IAPDebugOverlay`: Universal in-game runtime debug menu for Development Builds and Editor, allowing real-time store inspection, simulated purchases, fallback clearing, and store testing for all products.
+- **Multi-Product Engine & Inspector Rewards**:
+  - `ProductConfig.onEntitlementGranted` (`UnityEvent`): Wire game unlocks and currency rewards per product directly in the Unity Inspector without writing C# boilerplate.
+  - `ProductConfig.playerPrefsFallbackKey`: Optional automatic local save key for non-consumable products, checked seamlessly by `HasPurchased()`.
+  - Fallback metadata fields (`titleFallback`, `descriptionFallback`, `priceFallback`) for offline display and Editor UI design.
+  - `IAPHelper.autoConfigurePlatformRestore`: Automatic platform-aware auto-restore configuration.
+- **Unified Editor Dashboard (`Window > Wagenheimer > IAP Helper Dashboard`)**:
+  - **Setup Audit**: Project-wide static verification with severity filtering, fix hints, and Markdown export.
+  - **Product Catalog**: Live visual table of configured products across platforms.
+  - **Store Release Checklist**: Interactive pre-flight checklist for Google Play, App Store Connect, and Amazon with local `EditorPrefs` persistence.
+  - **Docs & Updates**: Built-in GitHub update checker and documentation links.
+- **Custom Modern Inspectors**:
+  - `IAPHelperEditor`: Redesigned inspector with status diagnostics and visual product management.
+  - `IAPProductButtonEditor`: Catalog dropdown selector, binding status badges, and 1-click component auto-resolve.
 
 ## [1.1.1] - 2026-09-17
 

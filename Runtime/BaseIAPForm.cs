@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Linq;
 using System.Threading.Tasks;
@@ -103,7 +103,9 @@ namespace Wagenheimer.IAPHelper
             }
 
             var product = _iapHelper.GetProduct(productId);
-            if (product == null)
+            string price = _iapHelper.GetPrice(productId);
+
+            if (product == null && string.IsNullOrEmpty(price))
             {
                 SetPriceText(Translate("productnotfound"));
                 return;
@@ -117,8 +119,8 @@ namespace Wagenheimer.IAPHelper
                 return;
             }
 
-            SetPriceText(product.metadata?.localizedPriceString ?? "");
-            Debug.Log($"[{GetType().Name}] Product: {productId} - {product.metadata?.localizedPriceString}");
+            SetPriceText(!string.IsNullOrEmpty(price) ? price : (product?.metadata?.localizedPriceString ?? ""));
+            Debug.Log($"[{GetType().Name}] Product: {productId} - Price: {price}");
         }
 
         protected virtual void ConfigureRestoreButton()

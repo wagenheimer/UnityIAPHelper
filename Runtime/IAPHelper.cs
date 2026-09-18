@@ -59,6 +59,9 @@ namespace Wagenheimer.IAPHelper
         [Header("Settings")]
         public bool initializeOnStart = true;
 
+        [Tooltip("Automatically detects and sets autoRestorePurchases according to the runtime platform (True on Android/Amazon, False on iOS/macOS).")]
+        public bool autoConfigurePlatformRestore = true;
+
         /// <summary>
         /// When enabled, automatically calls <see cref="FetchPurchases"/> right after connecting to the store.
         /// <para><b>Android (Google Play / Amazon):</b> Strongly recommended <c>true</c> (or use <see cref="RecommendedAutoRestoreForCurrentPlatform"/>).
@@ -142,6 +145,11 @@ namespace Wagenheimer.IAPHelper
 
             Instance = this;
             DontDestroyOnLoad(gameObject);
+
+            if (autoConfigurePlatformRestore)
+            {
+                ConfigureAutoRestoreByPlatform();
+            }
         }
 
         protected virtual void Start()
@@ -658,6 +666,35 @@ namespace Wagenheimer.IAPHelper
 
             Debug.Log($"[IAPHelper] Granting entitlement for: {productId}");
 
+            // 1. Process ProductConfig triggers (PlayerPrefs fallback and per-product UnityEvent)
+            var config = GetProductConfig(productId);
+            if (config != null)
+            {
+                if (!string.IsNullOrEmpty(config.playerPrefsFallbackKey))
+                {
+                    try
+                    {
+                        PlayerPrefs.SetInt(config.playerPrefsFallbackKey, 1);
+                        PlayerPrefs.Save();
+                        Debug.Log($"[IAPHelper] PlayerPrefs fallback key saved: {config.playerPrefsFallbackKey} = 1");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogError($"[IAPHelper] Failed saving PlayerPrefs fallback for '{productId}': {ex.Message}");
+                    }
+                }
+
+                try
+                {
+                    config.onEntitlementGranted?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[IAPHelper] Error invoking onEntitlementGranted UnityEvent for '{productId}': {ex.Message}");
+                }
+            }
+
+            // 2. Fire global C# event
             try
             {
                 OnEntitlementGranted?.Invoke(productId);
@@ -745,10 +782,50 @@ namespace Wagenheimer.IAPHelper
                 (p.definition.storeSpecificId != null && p.definition.storeSpecificId == productId));
         }
 
+        public ProductConfig GetProductConfig(string productId)
+        {
+            if (products == null || string.IsNullOrEmpty(productId))
+                return null;
+
+            return products.FirstOrDefault(p =>
+                p != null && (
+                    p.id == productId ||
+                    p.googlePlayId == productId ||
+                    p.appleId == productId ||
+                    p.amazonId == productId));
+        }
+
         public string GetPrice(string productId)
         {
             var product = GetProduct(productId);
-            return product?.metadata?.localizedPriceString ?? "";
+            if (product != null && product.metadata != null && !string.IsNullOrEmpty(product.metadata.localizedPriceString))
+                return product.metadata.localizedPriceString;
+
+            var config = GetProductConfig(productId);
+            return config?.priceFallback ?? string.Empty;
+        }
+
+        public string GetProductTitle(string productId)
+        {
+            var product = GetProduct(productId);
+            if (product != null && product.metadata != null && !string.IsNullOrEmpty(product.metadata.localizedTitle))
+                return product.metadata.localizedTitle;
+
+            var config = GetProductConfig(productId);
+            if (config != null && !string.IsNullOrEmpty(config.titleFallback))
+                return config.titleFallback;
+
+            return productId;
+        }
+
+        public string GetProductDescription(string productId)
+        {
+            var product = GetProduct(productId);
+            if (product != null && product.metadata != null && !string.IsNullOrEmpty(product.metadata.localizedDescription))
+                return product.metadata.localizedDescription;
+
+            var config = GetProductConfig(productId);
+            return config?.descriptionFallback ?? string.Empty;
         }
 
         public bool IsProductAvailable(string productId)
@@ -788,6 +865,14 @@ namespace Wagenheimer.IAPHelper
                         }
                     }
                 }
+            }
+
+            // Check PlayerPrefs fallback key from product config if configured
+            var config = GetProductConfig(productId);
+            if (config != null && !string.IsNullOrEmpty(config.playerPrefsFallbackKey))
+            {
+                if (PlayerPrefs.GetInt(config.playerPrefsFallbackKey, 0) == 1)
+                    return true;
             }
 
             if (HasPurchasedFallback != null && HasPurchasedFallback(productId))
@@ -874,11 +959,39 @@ namespace Wagenheimer.IAPHelper
     [Serializable]
     public class ProductConfig
     {
+        [Tooltip("Unique product identifier (e.g. unlockfullgame, coins_100, no_ads). Matches store SKU unless overridden below.")]
         public string id = "unlockfullgame";
+
+        [Tooltip("Product type: Consumable (repeatable like coins), NonConsumable (permanent like unlock game or remove ads), or Subscription.")]
         public ProductType type = ProductType.NonConsumable;
+
+        [Header("Store SKU Overrides (Optional)")]
+        [Tooltip("Google Play product ID if different from main ID.")]
         public string googlePlayId = "";
+
+        [Tooltip("Apple App Store product ID if different from main ID.")]
         public string appleId = "";
+
+        [Tooltip("Amazon Appstore product ID if different from main ID.")]
         public string amazonId = "unlockfullgameamazon";
+
+        [Header("Display Fallbacks (Editor & Offline)")]
+        [Tooltip("Fallback title displayed when offline, in Editor, or before store metadata loads.")]
+        public string titleFallback = "";
+
+        [Tooltip("Fallback description displayed when offline or in Editor.")]
+        [TextArea(2, 4)]
+        public string descriptionFallback = "";
+
+        [Tooltip("Fallback localized price string (e.g. '$2.99') used when offline or in Editor.")]
+        public string priceFallback = "";
+
+        [Header("Persistence & Zero-Code Rewards")]
+        [Tooltip("Optional PlayerPrefs key. If set, saved as '1' automatically upon purchase/restore and checked by HasPurchased.")]
+        public string playerPrefsFallbackKey = "";
+
+        [Tooltip("Dispatched when this product is granted (live purchase or restore). Connect game methods here directly in the Inspector with zero code!")]
+        public UnityEngine.Events.UnityEvent onEntitlementGranted = new UnityEngine.Events.UnityEvent();
     }
 
     public class PurchaseResult
