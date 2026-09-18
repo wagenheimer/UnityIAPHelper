@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-09-18
+
+### Changed
+- **Update Window Redesign**: Complete visual overhaul of `UpdateAvailableWindow` with modern slate header banner, pill badge, version diff card (`Installed: vX.Y.Z ➔ Latest: vA.B.C`), rich-text markdown release notes parser (`✦ Added`, `✔ Fixed`, `⚡ Changed`, styled bullets), and fixed layout scrolling.
+- **Multi-Version Release Notes**: Enhanced `ExtractVersionNotes` in `UpdateChecker` to extract cumulative notes across intermediate versions and gracefully fallback to the latest changelog section instead of showing empty notes.
+
 ## [1.5.0] - 2026-09-18
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "com.wagenheimer.iaphelper",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "displayName": "IAP Helper",
   "description": "Production-ready Unity In-App Purchasing (v5+) framework. Features multi-product support, zero-code prefab UI components, two-step pending-confirm flow, cross-platform store resolution, and an integrated editor verification dashboard.",
   "unity": "2021.3",
