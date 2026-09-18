@@ -48,7 +48,7 @@ namespace Wagenheimer.IAPHelper.Editor
     /// </remarks>
     public static class IAPHelperAudit
     {
-        [MenuItem("Tools/Wagenheimer/IAP Helper/Verify Setup...", priority = 100)]
+        [MenuItem("Tools/Wagenheimer/IAP Helper/Verify Setup...", priority = 121)]
         public static void OpenWindow()
         {
             IAPHelperDashboardWindow.OpenAuditTab();

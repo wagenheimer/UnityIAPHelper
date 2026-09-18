@@ -52,7 +52,7 @@ namespace Wagenheimer.IAPHelper.Editor
             ("General / Multiplatform", "gen_save", "Entitlement is permanently wired", "Reward method is hooked via OnEntitlementGranted or product UnityEvent.")
         };
 
-        [MenuItem("Tools/Wagenheimer/IAP Helper/Dashboard", priority = 10)]
+        [MenuItem("Tools/Wagenheimer/IAP Helper/Dashboard", priority = 120)]
         public static void OpenDashboard()
         {
             var window = GetWindow<IAPHelperDashboardWindow>("IAP Helper");
