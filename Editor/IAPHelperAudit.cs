@@ -7,7 +7,6 @@ using System.Text.RegularExpressions;
 
 using UnityEditor;
 using UnityEditor.PackageManager;
-using UnityEditor.SceneManagement;
 
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -195,8 +194,8 @@ namespace Wagenheimer.IAPHelper.Editor
                         Category = "IAPHelper",
                         Title = "No IAPHelper component found in the project",
                         Severity = AuditSeverity.Fail,
-                        Detail = "No GameObject with the IAPHelper component was found in prefabs, scenes, or via gameObject.AddComponent<IAPHelper>()/AddComponent(typeof(IAPHelper)) in source.",
-                        FixHint = "Add IAPHelper.Instance during game boot (e.g. AddComponent at startup) or place the component on a persistent GameObject (DontDestroyOnLoad is already applied internally)."
+                        Detail = "No GameObject with the IAPHelper component was found in project prefabs or any currently-open scene.",
+                        FixHint = "Add the IAPHelper component to your persistent Main or Bootstrap prefab (or the root GameObject in your initial scene). DontDestroyOnLoad is applied automatically — no code required."
                     });
                 }
             }
@@ -513,28 +512,15 @@ namespace Wagenheimer.IAPHelper.Editor
                 }
             }
 
-            // Scenes: opened additively and WITHOUT SAVING, purely to read components. Restricted to scenes
-            // under "Assets/" — scenes bundled inside installed packages (Packages/... or resolved under
-            // Library/PackageCache/...) are read-only and EditorSceneManager.OpenScene throws
-            // "It is not allowed to open a scene in a read-only package" for them, so they're skipped.
-            foreach (var scenePath in EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path)
-                         .Concat(FindAllSceneAssetPathsNotInBuildSettings())
-                         .Where(IsProjectAssetPath)
-                         .Distinct())
+            // Scenes: only scan the scenes that are already open in the editor.
+            // Opening ALL scenes via EditorSceneManager.OpenScene on large projects causes an
+            // editor freeze. Full multi-scene scanning should only be done as an explicit opt-in
+            // action (e.g. a separate "Deep Scan All Scenes" button), not on every audit run.
+            for (int si = 0; si < UnityEngine.SceneManagement.SceneManager.sceneCount; si++)
             {
-                if (string.IsNullOrEmpty(scenePath) || !File.Exists(scenePath))
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(si);
+                if (!scene.isLoaded || !IsProjectAssetPath(scene.path))
                     continue;
-
-                Scene scene;
-                try
-                {
-                    scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning($"[IAPHelperAudit] Could not open scene '{scenePath}' for auditing: {ex.Message}");
-                    continue;
-                }
 
                 foreach (var root in scene.GetRootGameObjects())
                 {
@@ -543,12 +529,10 @@ namespace Wagenheimer.IAPHelper.Editor
                         found.Add(new FoundComponent<T>
                         {
                             Component = component,
-                            Location = $"Scene: {scenePath} ({component.gameObject.name})"
+                            Location = $"Scene: {scene.path} ({component.gameObject.name})"
                         });
                     }
                 }
-
-                EditorSceneManager.CloseScene(scene, true);
             }
 
             return found;

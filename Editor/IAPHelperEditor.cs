@@ -18,18 +18,20 @@ namespace Wagenheimer.IAPHelper.Editor
         private SerializedProperty _autoRestorePurchasesProp;
         private SerializedProperty _processPendingOnFetchProp;
         private SerializedProperty _logPurchasesFetchFailuresProp;
+        private SerializedProperty _enableDebugOverlayProp;
 
         private bool _showProducts = true;
         private bool _showSettings = true;
 
         private void OnEnable()
         {
-            _productsProp = serializedObject.FindProperty("products");
-            _initializeOnStartProp = serializedObject.FindProperty("initializeOnStart");
-            _autoConfigurePlatformRestoreProp = serializedObject.FindProperty("autoConfigurePlatformRestore");
-            _autoRestorePurchasesProp = serializedObject.FindProperty("autoRestorePurchases");
-            _processPendingOnFetchProp = serializedObject.FindProperty("processPendingOnFetch");
-            _logPurchasesFetchFailuresProp = serializedObject.FindProperty("logPurchasesFetchFailures");
+            _productsProp                    = serializedObject.FindProperty("products");
+            _initializeOnStartProp           = serializedObject.FindProperty("initializeOnStart");
+            _autoConfigurePlatformRestoreProp= serializedObject.FindProperty("autoConfigurePlatformRestore");
+            _autoRestorePurchasesProp        = serializedObject.FindProperty("autoRestorePurchases");
+            _processPendingOnFetchProp       = serializedObject.FindProperty("processPendingOnFetch");
+            _logPurchasesFetchFailuresProp   = serializedObject.FindProperty("logPurchasesFetchFailures");
+            _enableDebugOverlayProp          = serializedObject.FindProperty("enableDebugOverlay");
         }
 
         public override void OnInspectorGUI()
@@ -67,7 +69,7 @@ namespace Wagenheimer.IAPHelper.Editor
                 normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.35f, 0.75f, 1f) : new Color(0.1f, 0.35f, 0.75f) }
             };
 
-            EditorGUILayout.LabelField("IAP Helper v1.2.0", titleStyle);
+            EditorGUILayout.LabelField("IAP Helper v1.3.0", titleStyle);
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.LabelField("Production-ready monetization framework with multi-product zero-code support.", EditorStyles.miniLabel);
@@ -88,18 +90,13 @@ namespace Wagenheimer.IAPHelper.Editor
                 IAPHelperDashboardWindow.OpenAuditTab();
             }
 
-            if (GUILayout.Button(new GUIContent(" Add Debug Overlay", EditorGUIUtility.IconContent("d_DebuggerAttached").image), GUILayout.Height(26)))
+            // Overlay status indicator — auto-attach is controlled by enableDebugOverlay field in Settings.
+            bool overlayActive = FindObjectOfType<IAPDebugOverlay>() != null;
+            using (new EditorGUI.DisabledScope(true))
             {
-                var existing = FindObjectOfType<IAPDebugOverlay>();
-                if (existing == null)
-                {
-                    Undo.AddComponent<IAPDebugOverlay>(helper.gameObject);
-                    EditorUtility.DisplayDialog("IAP Helper", "IAPDebugOverlay attached to " + helper.gameObject.name, "OK");
-                }
-                else
-                {
-                    Selection.activeGameObject = existing.gameObject;
-                }
+                string label = overlayActive ? " Debug Overlay: ON" : " Debug Overlay: OFF";
+                string icon  = overlayActive ? "d_DebuggerAttached" : "d_DebuggerDisabled";
+                GUILayout.Button(new GUIContent(label, EditorGUIUtility.IconContent(icon).image), GUILayout.Height(26));
             }
 
             EditorGUILayout.EndHorizontal();
@@ -114,13 +111,13 @@ namespace Wagenheimer.IAPHelper.Editor
 
                 for (int i = 0; i < _productsProp.arraySize; i++)
                 {
-                    SerializedProperty productElem = _productsProp.GetArrayElementAtIndex(i);
-                    SerializedProperty idProp = productElem.FindPropertyRelative("id");
-                    SerializedProperty typeProp = productElem.FindPropertyRelative("type");
-                    SerializedProperty fallbackPriceProp = productElem.FindPropertyRelative("priceFallback");
+                    SerializedProperty productElem      = _productsProp.GetArrayElementAtIndex(i);
+                    SerializedProperty idProp           = productElem.FindPropertyRelative("id");
+                    SerializedProperty typeProp         = productElem.FindPropertyRelative("type");
+                    SerializedProperty fallbackPriceProp= productElem.FindPropertyRelative("priceFallback");
 
-                    string title = string.IsNullOrEmpty(idProp.stringValue) ? $"Product {i}" : idProp.stringValue;
-                    string typeName = ((ProductType)typeProp.enumValueIndex).ToString();
+                    string title     = string.IsNullOrEmpty(idProp.stringValue) ? $"Product {i}" : idProp.stringValue;
+                    string typeName  = ((ProductType)typeProp.enumValueIndex).ToString();
                     string priceText = !string.IsNullOrEmpty(fallbackPriceProp.stringValue) ? $" [{fallbackPriceProp.stringValue}]" : "";
 
                     EditorGUILayout.BeginVertical(EditorStyles.helpBox);
@@ -170,10 +167,10 @@ namespace Wagenheimer.IAPHelper.Editor
                 {
                     _productsProp.InsertArrayElementAtIndex(_productsProp.arraySize);
                     var newElem = _productsProp.GetArrayElementAtIndex(_productsProp.arraySize - 1);
-                    newElem.FindPropertyRelative("id").stringValue = "new_product";
-                    newElem.FindPropertyRelative("type").enumValueIndex = (int)ProductType.Consumable;
-                    newElem.FindPropertyRelative("titleFallback").stringValue = "";
-                    newElem.FindPropertyRelative("priceFallback").stringValue = "$0.99";
+                    newElem.FindPropertyRelative("id").stringValue                = "new_product";
+                    newElem.FindPropertyRelative("type").enumValueIndex           = (int)ProductType.Consumable;
+                    newElem.FindPropertyRelative("titleFallback").stringValue     = "";
+                    newElem.FindPropertyRelative("priceFallback").stringValue     = "$0.99";
                     newElem.FindPropertyRelative("playerPrefsFallbackKey").stringValue = "";
                 }
             }
@@ -194,11 +191,19 @@ namespace Wagenheimer.IAPHelper.Editor
                 }
                 else
                 {
-                    EditorGUILayout.HelpBox($"Auto-Configure Platform Restore is ENABLED. Current build target autoRestorePurchases will be evaluated at runtime (True on Android/Amazon, False on iOS/macOS).", MessageType.Info);
+                    EditorGUILayout.HelpBox("Auto-Configure Platform Restore is ENABLED. Current build target autoRestorePurchases will be evaluated at runtime (True on Android/Amazon, False on iOS/macOS).", MessageType.Info);
                 }
 
                 EditorGUILayout.PropertyField(_processPendingOnFetchProp);
                 EditorGUILayout.PropertyField(_logPurchasesFetchFailuresProp);
+
+                EditorGUILayout.Space(4);
+                EditorGUILayout.LabelField("Debug & QA", EditorStyles.boldLabel);
+                EditorGUILayout.PropertyField(_enableDebugOverlayProp);
+                if (_enableDebugOverlayProp != null && _enableDebugOverlayProp.boolValue)
+                {
+                    EditorGUILayout.HelpBox("IAPDebugOverlay will be auto-attached at runtime in the Unity Editor and Development Builds. No scene setup or code required.", MessageType.None);
+                }
             }
             EditorGUILayout.EndFoldoutHeaderGroup();
         }
@@ -217,4 +222,3 @@ namespace Wagenheimer.IAPHelper.Editor
         }
     }
 }
-

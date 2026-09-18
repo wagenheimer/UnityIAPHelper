@@ -93,6 +93,10 @@ namespace Wagenheimer.IAPHelper
         public bool processPendingOnFetch = true;
         public bool logPurchasesFetchFailures = false;
 
+        [Header("Debug & QA")]
+        [Tooltip("Automatically attaches the in-game IAPDebugOverlay in Editor and Development Builds. No manual scene setup or code required.")]
+        public bool enableDebugOverlay = true;
+
         #endregion
 
         #region Events
@@ -159,6 +163,19 @@ namespace Wagenheimer.IAPHelper
             if (autoConfigurePlatformRestore)
             {
                 ConfigureAutoRestoreByPlatform();
+            }
+
+            if (enableDebugOverlay && (Application.isEditor || Debug.isDebugBuild))
+            {
+                EnsureDebugOverlay();
+            }
+        }
+
+        private void EnsureDebugOverlay()
+        {
+            if (GetComponent<UI.IAPDebugOverlay>() == null && FindObjectOfType<UI.IAPDebugOverlay>() == null)
+            {
+                gameObject.AddComponent<UI.IAPDebugOverlay>();
             }
         }
 

@@ -52,8 +52,7 @@ namespace Wagenheimer.IAPHelper.Editor
             ("General / Multiplatform", "gen_save", "Entitlement is permanently wired", "Reward method is hooked via OnEntitlementGranted or product UnityEvent.")
         };
 
-        [MenuItem("Window/Wagenheimer/IAP Helper Dashboard", priority = 10)]
-        [MenuItem("Tools/Wagenheimer/IAP Helper/Dashboard & Verification...", priority = 10)]
+        [MenuItem("Tools/Wagenheimer/IAP Helper/Dashboard", priority = 10)]
         public static void OpenDashboard()
         {
             var window = GetWindow<IAPHelperDashboardWindow>("IAP Helper");
@@ -71,10 +70,8 @@ namespace Wagenheimer.IAPHelper.Editor
 
         private void OnEnable()
         {
-            if (_auditResults == null)
-            {
-                RunAudit();
-            }
+            // Audit is NOT run automatically on window open — it requires opening scenes which
+            // can be slow on large projects. Click "Run Setup Audit" to run it on demand.
         }
 
         private void RunAudit()
@@ -158,7 +155,19 @@ namespace Wagenheimer.IAPHelper.Editor
         private void DrawSetupAuditTab()
         {
             if (_auditResults == null)
-                RunAudit();
+            {
+                EditorGUILayout.Space(12);
+                EditorGUILayout.HelpBox(
+                    "Click 'Run Setup Audit' to scan your project for IAP configuration issues.\n\n" +
+                    "The audit checks prefabs and currently open scenes — no scenes are opened or modified.",
+                    MessageType.Info);
+                EditorGUILayout.Space(6);
+                if (GUILayout.Button("Run Setup Audit", GUILayout.Height(32)))
+                {
+                    RunAudit();
+                }
+                return;
+            }
 
             int passCount = _auditResults.Count(r => r.Severity == AuditSeverity.Pass);
             int infoCount = _auditResults.Count(r => r.Severity == AuditSeverity.Info);
@@ -289,7 +298,10 @@ namespace Wagenheimer.IAPHelper.Editor
 
             if (helper == null)
             {
-                EditorGUILayout.HelpBox("No IAPHelper component found in active scene. Place an IAPHelper in your preloading or manager scene.", MessageType.Warning);
+                EditorGUILayout.HelpBox(
+                    "No IAPHelper component found in the active scene.\n\n" +
+                    "Add the IAPHelper component to your persistent Main or Bootstrap prefab — it will be available across all scenes automatically (DontDestroyOnLoad is applied internally).",
+                    MessageType.Warning);
                 return;
             }
 

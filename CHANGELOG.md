@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-18
+
+### Added
+- **Auto-attach `IAPDebugOverlay`**: New `enableDebugOverlay` field on `IAPHelper`. When enabled, the overlay is automatically attached in the Unity Editor and Development Builds — no scene setup or code required. Controlled via the **Debug & QA** section in the Inspector.
+
+### Changed
+- **Audit performance**: `IAPHelperAudit.FindAllComponents` no longer opens every project scene via `EditorSceneManager.OpenScene`. The audit now scans prefabs and any currently open scenes only, eliminating editor freezes on large projects. Full multi-scene scan is available as an explicit opt-in ("Re-run Audit" after opening the relevant scenes).
+- **Dashboard opens instantly**: `IAPHelperDashboardWindow.OnEnable` no longer auto-runs the audit. The Setup Audit tab shows a prompt with a "Run Setup Audit" button, so the window opens without delay.
+- **Menu cleanup**: Removed the duplicate `Window/Wagenheimer/IAP Helper Dashboard` menu item. Dashboard is now accessed exclusively via `Tools/Wagenheimer/IAP Helper/Dashboard`.
+- **Inspector toolbar**: Replaced the manual "Add Debug Overlay" button with a read-only status label showing whether the overlay is currently active. Overlay attachment is automatic via the `enableDebugOverlay` field.
+- **Audit fix hint**: "No IAPHelper found" fix hint now says to add the component to the persistent Main/Bootstrap prefab — no longer suggests `AddComponent` in code.
+- **Product Catalog tab**: Updated the "no IAPHelper found" message to guide users toward using a Bootstrap prefab instead of a manager scene.
+
 ## [1.2.0] - 2026-09-17
 
 ### Added
