@@ -1,6 +1,6 @@
 {
   "name": "com.wagenheimer.iaphelper",
-  "version": "1.5.5",
+  "version": "1.6.0",
   "displayName": "IAP Helper",
   "description": "Production-ready Unity In-App Purchasing (v5+) framework. Features multi-product support, zero-code prefab UI components, two-step pending-confirm flow, cross-platform store resolution, and an integrated editor verification dashboard.",
   "unity": "2021.3",
@@ -20,7 +20,6 @@
   ],
   "category": "Monetization",
   "dependencies": {
-    "com.unity.purchasing": "5.4.3",
-    "com.wagenheimer.packagehub": "1.0.4"
+    "com.unity.purchasing": "5.4.3"
   }
 }
