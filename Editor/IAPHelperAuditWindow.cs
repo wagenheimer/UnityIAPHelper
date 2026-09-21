@@ -84,6 +84,20 @@ namespace Wagenheimer.IAPHelper.Editor
                 ShowNotification(new GUIContent("Report copied!"));
             }
 
+            int pendingPrompts = 0;
+            foreach (var r in _results)
+                if (!string.IsNullOrEmpty(r.Prompt))
+                    pendingPrompts++;
+
+            using (new EditorGUI.DisabledScope(pendingPrompts == 0))
+            {
+                if (GUILayout.Button($"Copy AI prompts ({pendingPrompts})", EditorStyles.toolbarButton, GUILayout.Width(170)))
+                {
+                    EditorGUIUtility.systemCopyBuffer = IAPHelperAudit.ToPromptMarkdown(_results);
+                    ShowNotification(new GUIContent("AI prompts copied!"));
+                }
+            }
+
             GUILayout.FlexibleSpace();
 
             EditorGUILayout.EndHorizontal();
@@ -128,6 +142,18 @@ namespace Wagenheimer.IAPHelper.Editor
                 GUI.contentColor = new Color(0.5f, 0.75f, 1f);
                 EditorGUILayout.LabelField("How to fix: " + r.FixHint, EditorStyles.wordWrappedMiniLabel);
                 GUI.contentColor = prev;
+            }
+
+            if (!string.IsNullOrEmpty(r.Prompt))
+            {
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button("Copy AI prompt", GUILayout.Width(120)))
+                {
+                    EditorGUIUtility.systemCopyBuffer = r.Prompt;
+                    ShowNotification(new GUIContent("AI prompt copied"));
+                }
+                EditorGUILayout.EndHorizontal();
             }
 
             EditorGUILayout.EndVertical();

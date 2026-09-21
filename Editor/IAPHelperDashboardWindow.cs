@@ -131,7 +131,7 @@ namespace Wagenheimer.IAPHelper.Editor
                 alignment = TextAnchor.MiddleRight,
                 normal = { textColor = Color.gray }
             };
-            EditorGUILayout.LabelField("v1.2.0", badgeStyle, GUILayout.Width(45));
+            EditorGUILayout.LabelField("v" + InstalledVersion(), badgeStyle, GUILayout.Width(60));
 
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.LabelField("Verification Center, Multi-Product Management & Store Release Checklist", EditorStyles.miniLabel);
@@ -194,6 +194,18 @@ namespace Wagenheimer.IAPHelper.Editor
                 EditorGUIUtility.systemCopyBuffer = md;
                 EditorUtility.DisplayDialog("Audit Report", "Markdown report copied to clipboard!", "OK");
             }
+
+            int pendingPrompts = _auditResults.Count(r => !string.IsNullOrEmpty(r.Prompt));
+            using (new EditorGUI.DisabledScope(pendingPrompts == 0))
+            {
+                if (GUILayout.Button($"Copy AI prompt ({pendingPrompts})", GUILayout.Width(150), GUILayout.Height(24)))
+                {
+                    EditorGUIUtility.systemCopyBuffer = IAPHelperAudit.ToPromptMarkdown(_auditResults);
+                    EditorUtility.DisplayDialog("AI Prompt",
+                        "Prompt covering every warning/error copied to the clipboard.\n\nPaste it into your AI coding agent.", "OK");
+                }
+            }
+
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(4);
@@ -283,6 +295,19 @@ namespace Wagenheimer.IAPHelper.Editor
             {
                 EditorGUILayout.Space(2);
                 EditorGUILayout.HelpBox($"Fix: {item.FixHint}", MessageType.None);
+            }
+
+            if (!string.IsNullOrEmpty(item.Prompt))
+            {
+                EditorGUILayout.Space(2);
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button("Copy AI prompt", GUILayout.Width(130)))
+                {
+                    EditorGUIUtility.systemCopyBuffer = item.Prompt;
+                    ShowNotification(new GUIContent("AI prompt copied"));
+                }
+                EditorGUILayout.EndHorizontal();
             }
 
             EditorGUILayout.EndVertical();
@@ -422,7 +447,7 @@ namespace Wagenheimer.IAPHelper.Editor
             EditorGUILayout.LabelField("Package & Documentation", EditorStyles.boldLabel);
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.LabelField("Installed Version: <b>1.2.0</b>", new GUIStyle(EditorStyles.label) { richText = true });
+            EditorGUILayout.LabelField($"Installed Version: <b>{InstalledVersion()}</b>", new GUIStyle(EditorStyles.label) { richText = true });
             EditorGUILayout.LabelField("Repository: https://github.com/wagenheimer/UnityIAPHelper", EditorStyles.miniLabel);
 
             EditorGUILayout.Space(4);
@@ -467,6 +492,12 @@ namespace Wagenheimer.IAPHelper.Editor
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        private static string InstalledVersion()
+        {
+            var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(IAPHelperAudit).Assembly);
+            return package?.version ?? "unknown";
         }
 
         private void OpenRelativeFile(string filename)

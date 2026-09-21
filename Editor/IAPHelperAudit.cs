@@ -28,6 +28,13 @@ namespace Wagenheimer.IAPHelper.Editor
         public AuditSeverity Severity;
         public string Detail;
         public string FixHint;
+
+        /// <summary>
+        /// Ready-to-paste task for an AI coding agent, built from this finding: the reason, the
+        /// evidence, and the expected automatic fix. Populated for every actionable result
+        /// (Fail, Warning, and Info that carries a fix hint); empty for Pass results.
+        /// </summary>
+        public string Prompt;
     }
 
     /// <summary>
@@ -90,8 +97,33 @@ namespace Wagenheimer.IAPHelper.Editor
             AuditSourceWiring(results, csFiles, helperInstances);
             AuditPackageVersion(results);
 
+            AttachPrompts(results);
+
             return results;
         }
+
+        /// <summary>
+        /// Fills <see cref="AuditResult.Prompt"/> for every finding an AI agent could act on, so the
+        /// dashboard can offer a one-click "Copy AI prompt" per warning/error (and for informational
+        /// findings that still carry a concrete fix hint).
+        /// </summary>
+        private static void AttachPrompts(List<AuditResult> results)
+        {
+            for (int i = 0; i < results.Count; i++)
+            {
+                var r = results[i];
+                if (!ShouldPrompt(r))
+                    continue;
+
+                r.Prompt = BuildPrompt(r);
+                results[i] = r;
+            }
+        }
+
+        private static bool ShouldPrompt(AuditResult r) =>
+            r.Severity == AuditSeverity.Fail
+            || r.Severity == AuditSeverity.Warning
+            || (r.Severity == AuditSeverity.Info && !string.IsNullOrEmpty(r.FixHint));
 
         #region Checks
 
@@ -717,6 +749,85 @@ namespace Wagenheimer.IAPHelper.Editor
                 sb.AppendLine();
             }
 
+            return sb.ToString();
+        }
+
+        private static string ProjectLabel()
+        {
+            var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(IAPHelperAudit).Assembly);
+            return $"Unity {Application.unityVersion}, " +
+                   $"{package?.name ?? "com.wagenheimer.iaphelper"} {package?.version ?? "unknown"}, " +
+                   $"active build target {EditorUserBuildSettings.activeBuildTarget}";
+        }
+
+        /// <summary>
+        /// Turns a single finding into a ready-to-paste task for an AI coding agent. The prompt
+        /// carries the reason (evidence) and the expected fix, and asks the agent to explain the
+        /// cause and apply the safest automatic correction, then re-run the audit to confirm.
+        /// </summary>
+        public static string BuildPrompt(AuditResult r)
+        {
+            var severityAction = r.Severity switch
+            {
+                AuditSeverity.Fail =>
+                    "This is a blocking error: it makes purchases, restores or ownership checks fail. It must be fixed.",
+                AuditSeverity.Warning =>
+                    "This is a risk: depending on the platform or flow it can fail silently (e.g. a purchase that never grants). Verify whether it applies and fix it if it does.",
+                _ =>
+                    "This is informational: confirm whether the current value is correct for the target platforms and adjust it if it is not."
+            };
+
+            var sb = new StringBuilder();
+            sb.AppendLine("Context: " + ProjectLabel() + ".");
+            sb.AppendLine("A Unity IAP Helper setup audit (Tools > Wagenheimer > IAP Helper > Dashboard > Setup Audit) reported the finding below.");
+            sb.AppendLine();
+            sb.AppendLine($"Finding: {r.Category} - {r.Title}");
+            sb.AppendLine($"Severity: {r.Severity}");
+            if (!string.IsNullOrEmpty(r.Detail))
+                sb.AppendLine("Evidence: " + r.Detail);
+            if (!string.IsNullOrEmpty(r.FixHint))
+                sb.AppendLine("Suggested fix: " + r.FixHint);
+            sb.AppendLine();
+            sb.AppendLine(severityAction);
+            sb.AppendLine();
+            sb.AppendLine("Task:");
+            sb.AppendLine("1. Explain, in a few lines, why this happens and the concrete impact for this project.");
+            sb.AppendLine("2. Inspect the relevant prefabs/scenes/scripts referenced in the evidence.");
+            sb.AppendLine("3. Apply the safest, most correct automatic fix, following the project's existing conventions and the IAP Helper's intended usage. For a multiplatform build prefer runtime wiring (e.g. IAPHelper.RecommendedAutoRestoreForCurrentPlatform) over a hardcoded per-platform Inspector value.");
+            sb.AppendLine("4. Keep the change minimal: do not refactor unrelated code and do not break the IAPHelper singleton / DontDestroyOnLoad behaviour.");
+            sb.AppendLine("5. Re-run the audit (Tools > Wagenheimer > IAP Helper > Dashboard > Setup Audit) and confirm the finding is now Pass - or, if the current setup is intentional, explain why it should stay.");
+            sb.AppendLine();
+            sb.AppendLine("Implement the fix directly unless a change is destructive; do not ask for confirmation first.");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Combined prompt covering every actionable finding at once, so an AI agent can work
+        /// through all warnings/errors in a single pass. Returns a short notice when nothing is pending.
+        /// </summary>
+        public static string ToPromptMarkdown(List<AuditResult> results)
+        {
+            var pending = results.Where(r => !string.IsNullOrEmpty(r.Prompt)).ToList();
+            if (pending.Count == 0)
+                return "No IAP Helper audit findings need attention.";
+
+            var sb = new StringBuilder();
+            sb.AppendLine("Context: " + ProjectLabel() + ".");
+            sb.AppendLine("The IAP Helper setup audit reported the findings below. Work through them one at a time, keep each change minimal, and re-run Tools > Wagenheimer > IAP Helper > Dashboard > Setup Audit after each fix.");
+            sb.AppendLine();
+
+            for (int i = 0; i < pending.Count; i++)
+            {
+                var r = pending[i];
+                sb.AppendLine($"{i + 1}. [{r.Severity}] {r.Category} - {r.Title}");
+                if (!string.IsNullOrEmpty(r.Detail))
+                    sb.AppendLine("   evidence: " + r.Detail.Replace("\n", " "));
+                if (!string.IsNullOrEmpty(r.FixHint))
+                    sb.AppendLine("   suggested fix: " + r.FixHint.Replace("\n", " "));
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("For each finding: explain the root cause and the concrete impact, inspect the referenced assets/scripts, then apply the safest, most correct automatic fix following the project's conventions. Prefer runtime wiring (e.g. IAPHelper.RecommendedAutoRestoreForCurrentPlatform) over hardcoded per-platform Inspector values for a multiplatform build. Do not break the IAPHelper singleton / DontDestroyOnLoad behaviour and do not refactor unrelated code. Implement the fixes directly unless a change is destructive.");
             return sb.ToString();
         }
 

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-09-20
+
+### Added
+- AI prompts for the setup audit: every Fail, Warning and actionable Info finding now carries a ready-to-paste task (`AuditResult.Prompt`) that states the reason, the evidence and the expected automatic fix, and asks the agent to explain the cause, apply the safest fix and re-run the audit to confirm.
+- Dashboard: a per-item "Copy AI prompt" button and a "Copy AI prompt (N)" summary action that bundles every pending warning/error into one prompt. Same actions added to the legacy verification window.
+
+### Fixed
+- Dashboard: the version badge and the "Installed Version" line were hardcoded to 1.2.0; both now read the real installed package version.
+
 ## [1.6.0] - 2026-09-19
 
 ### Added
