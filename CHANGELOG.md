@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-09-23
+
+### Added
+- **UI Toolkit Design System**: Modernized interface with `IAPHelperCommon.uss` and `IAPHelperUIStyle.cs` featuring cards, severity badges (`pass`, `warn`, `fail`, `info`), product type pills (`Consumable`, `NonConsumable`, `Subscription`), and syntax-highlighted code boxes.
+- **Modular Dashboard Architecture**: Converted `IAPHelperDashboardWindow` from legacy `OnGUI()` to UI Toolkit `CreateGUI()` hosting 4 dedicated modular views:
+  - `IAPHelperAuditView`: Interactive setup audit runner with category grouping and severity filters.
+  - `IAPHelperCatalogView`: Live catalog inspector displaying configured products, type badges, store SKU overrides, and entitlement listeners.
+  - `IAPHelperChecklistView`: Persistent store release checklist for Google Play Console and Apple App Store Connect stored in `EditorPrefs`.
+  - `IAPHelperDocsView`: Unity IAP v5 architecture guide, code snippets, and update checker.
+- **UI Toolkit Custom Inspectors**:
+  - `IAPHelperEditor`: Converted to native `CreateInspectorGUI()` with hero banner, product card lists, and platform auto-restore settings.
+  - `IAPProductButtonEditor`: Converted to native `CreateInspectorGUI()` with catalog ID dropdown, binding status check badges, and 1-click Auto-Resolve.
+- **UI Toolkit Audit Window**: Modernized `IAPHelperAuditWindow` with UI Toolkit `CreateGUI()`.
+
 ## [1.7.0] - 2026-09-20
 
 ### Added

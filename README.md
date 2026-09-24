@@ -18,7 +18,8 @@ Supports **multi-product catalogs**, **zero-code prefab UI components**, persist
 - ⚡ **Inspector Reward Wiring**: Each product features an `onEntitlementGranted` UnityEvent in the Inspector. Hook up game methods (e.g. `Main.UnlockFullGame()`, `Player.AddCoins(100)`) with zero code.
 - 🛡️ **Fail-Safe Two-Step Flow**: Full implementation of Unity IAP v5 mandatory two-step purchase flow (`Pending -> Confirm`). Eliminates lost purchases and orders stuck in "Pending".
 - 🔄 **Smart Cross-Platform Restore**: 100% silent auto-restore on Android/Amazon on launch, combined with policy-compliant explicit UI restoration on iOS/macOS (Apple App Store Review Guideline 3.1.1).
-- 🔍 **Unified Verification Dashboard**: `Window > Wagenheimer > IAP Helper Dashboard` bundles automated code auditing, live product catalog inspection, interactive store release checklists, and update checks.
+- 🔍 **Unified UI Toolkit Dashboard**: `Tools > Wagenheimer > IAP Helper > Dashboard` provides interactive project setup auditing, live product catalog inspection, persistent pre-release store checklists (`EditorPrefs`), and documentation.
+- 🎛️ **Native UI Toolkit Custom Inspectors**: `IAPHelperEditor` and `IAPProductButtonEditor` built 100% on UI Toolkit with data-binding, catalog dropdowns, binding status check badges, and 1-click Auto-Resolve.
 - 🕹️ **Runtime Debug Overlay**: Built-in in-game panel (`IAPDebugOverlay`) for simulating purchases, revoking entitlements, and verifying store flows in Development Builds and Editor.
 
 ---

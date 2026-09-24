@@ -1,159 +1,121 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-
 using UnityEditor;
-
+using UnityEditor.UIElements;
 using UnityEngine;
-
+using UnityEngine.UIElements;
 using Wagenheimer.IAPHelper.UI;
 
 namespace Wagenheimer.IAPHelper.Editor
 {
+    /// <summary>
+    /// Custom UI Toolkit Inspector for <see cref="IAPProductButton"/>.
+    /// Provides product catalog ID dropdown, binding status check badges, and 1-click Auto-Resolve.
+    /// </summary>
     [CustomEditor(typeof(IAPProductButton), true)]
     public class IAPProductButtonEditor : UnityEditor.Editor
     {
-        private SerializedProperty _productIdProp;
-        private SerializedProperty _buttonBuyProp;
-        private SerializedProperty _labelPriceProp;
-        private SerializedProperty _labelTitleProp;
-        private SerializedProperty _labelDescriptionProp;
-        private SerializedProperty _imageIconProp;
-        private SerializedProperty _ownedBadgeProp;
-        private SerializedProperty _loadingIndicatorProp;
-        private SerializedProperty _ownedStateBehaviorProp;
-        private SerializedProperty _ownedTextProp;
-        private SerializedProperty _onPurchaseSuccessProp;
-        private SerializedProperty _onPurchaseFailedProp;
-
-        private void OnEnable()
+        public override VisualElement CreateInspectorGUI()
         {
-            _productIdProp = serializedObject.FindProperty("productId");
-            _buttonBuyProp = serializedObject.FindProperty("buttonBuy");
-            _labelPriceProp = serializedObject.FindProperty("labelPrice");
-            _labelTitleProp = serializedObject.FindProperty("labelTitle");
-            _labelDescriptionProp = serializedObject.FindProperty("labelDescription");
-            _imageIconProp = serializedObject.FindProperty("imageIcon");
-            _ownedBadgeProp = serializedObject.FindProperty("ownedBadge");
-            _loadingIndicatorProp = serializedObject.FindProperty("loadingIndicator");
-            _ownedStateBehaviorProp = serializedObject.FindProperty("ownedStateBehavior");
-            _ownedTextProp = serializedObject.FindProperty("ownedText");
-            _onPurchaseSuccessProp = serializedObject.FindProperty("onPurchaseSuccess");
-            _onPurchaseFailedProp = serializedObject.FindProperty("onPurchaseFailed");
-        }
-
-        public override void OnInspectorGUI()
-        {
-            serializedObject.Update();
+            var root = new VisualElement();
+            IAPHelperUIStyle.Apply(root);
 
             var comp = (IAPProductButton)target;
 
-            DrawProductSelector(comp);
-
-            EditorGUILayout.Space(4);
-
-            DrawBindingStatus(comp);
-
-            EditorGUILayout.Space(4);
-
-            DrawUIBindings();
-
-            EditorGUILayout.Space(4);
-
-            DrawOwnedBehavior();
-
-            EditorGUILayout.Space(4);
-
-            DrawEvents();
-
-            serializedObject.ApplyModifiedProperties();
-        }
-
-        private void DrawProductSelector(IAPProductButton comp)
-        {
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.LabelField("Product Selection", EditorStyles.boldLabel);
+            // 1. Product Selection Card
+            var prodCard = IAPHelperUIStyle.CreateCard("🎯 Product Selection", "Assign the catalog Product ID to bind to this purchase button.");
 
             var availableIds = GetAvailableCatalogProductIds();
+            var idProp = serializedObject.FindProperty("productId");
+
             if (availableIds.Count > 0)
             {
-                int currentIndex = availableIds.IndexOf(_productIdProp.stringValue);
+                int currentIndex = availableIds.IndexOf(idProp.stringValue);
                 var options = new List<string>(availableIds);
                 options.Add("[Custom ID...]");
 
-                int selected = currentIndex >= 0 ? currentIndex : options.Count - 1;
-                int newSelected = EditorGUILayout.Popup("Catalog Product", selected, options.ToArray());
-
-                if (newSelected >= 0 && newSelected < availableIds.Count)
+                int selectedIdx = currentIndex >= 0 ? currentIndex : options.Count - 1;
+                var dropdown = new PopupField<string>("Catalog Product", options, selectedIdx);
+                dropdown.RegisterValueChangedCallback(evt =>
                 {
-                    _productIdProp.stringValue = availableIds[newSelected];
-                }
+                    if (evt.newValue != "[Custom ID...]")
+                    {
+                        idProp.stringValue = evt.newValue;
+                        serializedObject.ApplyModifiedProperties();
+                    }
+                });
+                prodCard.Add(dropdown);
             }
 
-            EditorGUILayout.PropertyField(_productIdProp, new GUIContent("Product ID"));
-            EditorGUILayout.EndVertical();
-        }
+            prodCard.Add(new PropertyField(idProp, "Product ID"));
+            root.Add(prodCard);
 
-        private void DrawBindingStatus(IAPProductButton comp)
-        {
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("UI Component Bindings", EditorStyles.boldLabel);
+            // 2. UI Bindings Card
+            var bindCard = IAPHelperUIStyle.CreateCard("🔗 UI Component Bindings", "Visual elements dynamically updated with catalog price, title, and owned state.");
 
-            if (GUILayout.Button("Auto-Resolve", GUILayout.Width(100), GUILayout.Height(18)))
+            var resolveBtn = new Button(() =>
             {
                 comp.AutoResolveComponents();
                 EditorUtility.SetDirty(comp);
-            }
-            EditorGUILayout.EndHorizontal();
+                serializedObject.Update();
+            })
+            { text = "✨ Auto-Resolve Components" };
+            resolveBtn.AddToClassList("iap-toolbar-btn");
+            resolveBtn.style.alignSelf = Align.FlexStart;
+            resolveBtn.style.marginBottom = 8;
+            bindCard.Add(resolveBtn);
 
-            DrawStatusItem("Buy Button", comp.buttonBuy != null, required: true);
-            DrawStatusItem("Price Label (TMP)", comp.labelPrice != null, required: true);
-            DrawStatusItem("Title Label (TMP)", comp.labelTitle != null, required: false);
-            DrawStatusItem("Loading Indicator", comp.loadingIndicator != null, required: false);
-            DrawStatusItem("Owned Badge", comp.ownedBadge != null, required: false);
+            // Status Badges Row
+            var statusBox = new VisualElement { style = { marginBottom = 8 } };
+            statusBox.Add(CreateBindingStatusRow("Buy Button (Required)", comp.buttonBuy != null, true));
+            statusBox.Add(CreateBindingStatusRow("Price Label (Required)", comp.labelPrice != null, true));
+            statusBox.Add(CreateBindingStatusRow("Title Label (Optional)", comp.labelTitle != null, false));
+            statusBox.Add(CreateBindingStatusRow("Loading Indicator (Optional)", comp.loadingIndicator != null, false));
+            statusBox.Add(CreateBindingStatusRow("Owned Badge (Optional)", comp.ownedBadge != null, false));
+            bindCard.Add(statusBox);
 
-            EditorGUILayout.EndVertical();
+            bindCard.Add(new PropertyField(serializedObject.FindProperty("buttonBuy")));
+            bindCard.Add(new PropertyField(serializedObject.FindProperty("labelPrice")));
+            bindCard.Add(new PropertyField(serializedObject.FindProperty("labelTitle")));
+            bindCard.Add(new PropertyField(serializedObject.FindProperty("labelDescription")));
+            bindCard.Add(new PropertyField(serializedObject.FindProperty("imageIcon")));
+            bindCard.Add(new PropertyField(serializedObject.FindProperty("ownedBadge")));
+            bindCard.Add(new PropertyField(serializedObject.FindProperty("loadingIndicator")));
+            root.Add(bindCard);
+
+            // 3. Owned State Behavior Card
+            var ownedCard = IAPHelperUIStyle.CreateCard("🛡️ Owned State Behavior", "How the UI changes once the product is acquired.");
+            ownedCard.Add(new PropertyField(serializedObject.FindProperty("ownedStateBehavior")));
+            ownedCard.Add(new PropertyField(serializedObject.FindProperty("ownedText")));
+            root.Add(ownedCard);
+
+            // 4. Events Card
+            var eventsCard = IAPHelperUIStyle.CreateCard("⚡ Button Events");
+            eventsCard.Add(new PropertyField(serializedObject.FindProperty("onPurchaseSuccess")));
+            eventsCard.Add(new PropertyField(serializedObject.FindProperty("onPurchaseFailed")));
+            root.Add(eventsCard);
+
+            return root;
         }
 
-        private void DrawStatusItem(string label, bool hasReference, bool required)
+        private VisualElement CreateBindingStatusRow(string label, bool isBound, bool required)
         {
-            EditorGUILayout.BeginHorizontal();
-            string icon = hasReference ? "✓" : (required ? "✕" : "–");
-            string color = hasReference ? "green" : (required ? "red" : "gray");
-            EditorGUILayout.LabelField($"<color={color}><b>{icon}</b></color> {label}", new GUIStyle(EditorStyles.label) { richText = true });
-            EditorGUILayout.EndHorizontal();
-        }
+            var row = new VisualElement { style = { flexDirection = FlexDirection.Row, justifyContent = Justify.SpaceBetween, alignItems = Align.Center, marginBottom = 2 } };
+            var text = new Label(label) { style = { fontSize = 11 } };
+            row.Add(text);
 
-        private void DrawUIBindings()
-        {
-            EditorGUILayout.LabelField("References", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(_buttonBuyProp);
-            EditorGUILayout.PropertyField(_labelPriceProp);
-            EditorGUILayout.PropertyField(_labelTitleProp);
-            EditorGUILayout.PropertyField(_labelDescriptionProp);
-            EditorGUILayout.PropertyField(_imageIconProp);
-            EditorGUILayout.PropertyField(_ownedBadgeProp);
-            EditorGUILayout.PropertyField(_loadingIndicatorProp);
-        }
+            string badgeText = isBound ? "✓ Bound" : (required ? "✕ Missing" : "– Unset");
+            string badgeSeverity = isBound ? "pass" : (required ? "fail" : "info");
+            var badge = IAPHelperUIStyle.CreateBadge(badgeText, badgeSeverity);
+            row.Add(badge);
 
-        private void DrawOwnedBehavior()
-        {
-            EditorGUILayout.LabelField("Owned State Behavior", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(_ownedStateBehaviorProp);
-            EditorGUILayout.PropertyField(_ownedTextProp);
-        }
-
-        private void DrawEvents()
-        {
-            EditorGUILayout.LabelField("Events", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(_onPurchaseSuccessProp);
-            EditorGUILayout.PropertyField(_onPurchaseFailedProp);
+            return row;
         }
 
         private List<string> GetAvailableCatalogProductIds()
         {
-            var helper = FindObjectOfType<IAPHelper>();
+            var helper = UnityEngine.Object.FindObjectOfType<IAPHelper>();
             if (helper != null && helper.products != null)
             {
                 return helper.products
@@ -167,4 +129,3 @@ namespace Wagenheimer.IAPHelper.Editor
         }
     }
 }
-

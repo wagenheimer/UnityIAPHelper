@@ -1,0 +1,296 @@
+/* =========================================================================
+   UnityIAPHelper - Modern UI Toolkit Stylesheet
+   ========================================================================= */
+
+:root {
+    --iap-accent: #3388ff;
+    --iap-accent-light: #5ca1ff;
+    --iap-bg: #222226;
+    --iap-card-bg: #2a2a2e;
+    --iap-card-header: #323236;
+    --iap-border: #3c3c42;
+    --iap-text: #e6e6e6;
+    --iap-text-dim: #999999;
+    --iap-pass: #3ec972;
+    --iap-warn: #f5a623;
+    --iap-fail: #e84c4c;
+    --iap-info: #33bbf5;
+    --iap-consumable: #47d3e6;
+    --iap-nonconsumable: #4cd964;
+    --iap-subscription: #a568f0;
+}
+
+/* Base Window / Container */
+.iap-root {
+    flex-grow: 1;
+    background-color: var(--iap-bg);
+    color: var(--iap-text);
+    padding: 10px 14px;
+    font-size: 12px;
+}
+
+/* Header Banner */
+.iap-header {
+    background-color: var(--iap-card-bg);
+    border-bottom-width: 2px;
+    border-bottom-color: var(--iap-accent);
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}
+
+.iap-header-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.iap-header-left {
+    flex-direction: row;
+    align-items: center;
+}
+
+.iap-header-title {
+    font-size: 16px;
+    -unity-font-style: bold;
+    color: #ffffff;
+    margin-right: 8px;
+}
+
+.iap-header-version {
+    background-color: rgba(51, 136, 255, 0.2);
+    border-color: var(--iap-accent);
+    border-width: 1px;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 10px;
+    -unity-font-style: bold;
+    color: var(--iap-accent-light);
+}
+
+.iap-header-subtitle {
+    font-size: 11px;
+    color: var(--iap-text-dim);
+    margin-top: 4px;
+}
+
+/* Toolbar Buttons */
+.iap-toolbar-actions {
+    flex-direction: row;
+    align-items: center;
+}
+
+.iap-toolbar-btn {
+    height: 26px;
+    font-size: 11px;
+    margin-left: 6px;
+    padding: 0 10px;
+    border-radius: 4px;
+}
+
+/* Tab Bar */
+.iap-tab-row {
+    flex-direction: row;
+    margin-bottom: 10px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--iap-border);
+}
+
+.iap-tab-btn {
+    flex-grow: 1;
+    height: 32px;
+    font-size: 11px;
+    -unity-text-align: middle-center;
+    border-width: 0;
+    border-bottom-width: 3px;
+    border-bottom-color: transparent;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    background-color: var(--iap-card-bg);
+    color: var(--iap-text-dim);
+    margin-right: 2px;
+}
+
+.iap-tab-btn:hover {
+    background-color: #38383e;
+    color: #ffffff;
+}
+
+.iap-tab-btn.active {
+    background-color: #2b3952;
+    border-bottom-color: var(--iap-accent);
+    color: #ffffff;
+    -unity-font-style: bold;
+}
+
+/* Card Container */
+.iap-card {
+    background-color: var(--iap-card-bg);
+    border-width: 1px;
+    border-color: var(--iap-border);
+    border-radius: 6px;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+}
+
+.iap-card-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--iap-border);
+}
+
+.iap-card-title {
+    font-size: 13px;
+    -unity-font-style: bold;
+    color: #ffffff;
+}
+
+.iap-card-subtitle {
+    font-size: 11px;
+    color: var(--iap-text-dim);
+    margin-top: 2px;
+}
+
+/* Status Badges */
+.iap-badge {
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 10px;
+    -unity-font-style: bold;
+    align-self: center;
+}
+
+.iap-badge-pass {
+    background-color: rgba(62, 201, 114, 0.18);
+    border-width: 1px;
+    border-color: var(--iap-pass);
+    color: var(--iap-pass);
+}
+
+.iap-badge-warn {
+    background-color: rgba(245, 166, 35, 0.18);
+    border-width: 1px;
+    border-color: var(--iap-warn);
+    color: var(--iap-warn);
+}
+
+.iap-badge-fail {
+    background-color: rgba(232, 76, 76, 0.18);
+    border-width: 1px;
+    border-color: var(--iap-fail);
+    color: var(--iap-fail);
+}
+
+.iap-badge-info {
+    background-color: rgba(51, 187, 245, 0.18);
+    border-width: 1px;
+    border-color: var(--iap-info);
+    color: var(--iap-info);
+}
+
+/* Product Type Badges */
+.iap-type-consumable {
+    background-color: rgba(71, 211, 230, 0.18);
+    border-width: 1px;
+    border-color: var(--iap-consumable);
+    color: var(--iap-consumable);
+}
+
+.iap-type-nonconsumable {
+    background-color: rgba(76, 217, 100, 0.18);
+    border-width: 1px;
+    border-color: var(--iap-nonconsumable);
+    color: var(--iap-nonconsumable);
+}
+
+.iap-type-subscription {
+    background-color: rgba(165, 104, 240, 0.18);
+    border-width: 1px;
+    border-color: var(--iap-subscription);
+    color: var(--iap-subscription);
+}
+
+/* Callout Box */
+.iap-callout {
+    padding: 8px 10px;
+    border-radius: 4px;
+    margin-top: 6px;
+    margin-bottom: 8px;
+    border-left-width: 4px;
+    font-size: 11px;
+}
+
+.iap-callout-info {
+    background-color: rgba(51, 136, 255, 0.12);
+    border-left-color: var(--iap-accent);
+    color: #e0eeff;
+}
+
+.iap-callout-warn {
+    background-color: rgba(245, 166, 35, 0.12);
+    border-left-color: var(--iap-warn);
+    color: #fff2d6;
+}
+
+.iap-callout-pass {
+    background-color: rgba(62, 201, 114, 0.12);
+    border-left-color: var(--iap-pass);
+    color: #dffff0;
+}
+
+/* Code Box */
+.iap-code-box {
+    background-color: #19191c;
+    border-width: 1px;
+    border-color: #2f2f36;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-top: 4px;
+    margin-bottom: 6px;
+}
+
+.iap-code-text {
+    font-size: 11px;
+    color: #8ed684;
+}
+
+/* Checklist Item */
+.iap-checklist-item {
+    background-color: #242428;
+    border-width: 1px;
+    border-color: #34343a;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.iap-checklist-item.checked {
+    border-color: rgba(62, 201, 114, 0.4);
+    background-color: rgba(62, 201, 114, 0.06);
+}
+
+.iap-checklist-text {
+    flex-grow: 1;
+    margin-left: 8px;
+}
+
+.iap-checklist-title {
+    font-size: 12px;
+    -unity-font-style: bold;
+    color: #ffffff;
+}
+
+.iap-checklist-desc {
+    font-size: 10px;
+    color: var(--iap-text-dim);
+    margin-top: 2px;
+}
