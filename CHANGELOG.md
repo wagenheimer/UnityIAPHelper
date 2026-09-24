@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-09-23
+
+### Fixed
+- Fixed UI Toolkit style compilation errors on element borders by applying `.iap-catalog-card` and `.iap-store-chip` USS classes.
+- Fixed `ProductConfig.googlePlayId` property name reference in `IAPHelperCatalogView`.
+- Fixed `AuditResult.Detail` and `FixHint` property name references in `IAPHelperAuditView`.
+
 ## [1.8.0] - 2026-09-23
 
 ### Added
