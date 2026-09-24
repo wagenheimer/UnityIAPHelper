@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-09-24
+
+### Added
+- **UI Toolkit In-Game Overlay (`IAPDebugOverlay`)**: Fully migrated the runtime debug HUD from legacy IMGUI (`OnGUI()`) to native UI Toolkit (`UIDocument`).
+  - Sleek dark-slate design system with draggable floating window, minimize controls, and high-DPI scaling.
+  - Interactive floating launcher badge (`🛒 IAP DBG`) with live store connection dot indicator.
+  - Live store status badges: `STORE CONNECTED` / `DISCONNECTED`, `PRODUCTS LOADED`, and `AUTO-RESTORE`.
+  - Comprehensive products catalog with ownership breakdown (Store owned, PlayerPrefs key, Fallback delegate) and live store prices.
+  - Interactive simulation controls: `✓ Simulate Grant`, `✕ Revoke Local`, `↻ Revoke & Restore`, and real store purchase trigger `💳 Buy`.
+  - Global QA actions: `⟳ Force Init`, `⇩ Restore All`, `🗑 Clear All Keys`, and copyable diagnostic state report.
+  - Real-time event log with color-coded chips for purchases, grants, revokes, and connection callbacks.
+
 ## [1.8.1] - 2026-09-23
 
 ### Fixed
