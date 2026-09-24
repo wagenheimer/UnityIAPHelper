@@ -132,14 +132,24 @@ namespace Wagenheimer.IAPHelper.Editor
                     title.style.unityFontStyleAndWeight = FontStyle.Bold;
                     textCol.Add(title);
 
-                    if (!string.IsNullOrEmpty(item.Description))
+                    if (!string.IsNullOrEmpty(item.Detail))
                     {
-                        var desc = new Label(item.Description);
+                        var desc = new Label(item.Detail);
                         desc.style.fontSize = 10;
                         desc.style.color = new Color(0.70f, 0.70f, 0.75f);
                         desc.style.whiteSpace = WhiteSpace.Normal;
                         desc.style.marginTop = 2;
                         textCol.Add(desc);
+                    }
+
+                    if (!string.IsNullOrEmpty(item.FixHint))
+                    {
+                        var hint = new Label("💡 " + item.FixHint);
+                        hint.style.fontSize = 10;
+                        hint.style.color = new Color(0.45f, 0.75f, 0.95f);
+                        hint.style.whiteSpace = WhiteSpace.Normal;
+                        hint.style.marginTop = 2;
+                        textCol.Add(hint);
                     }
 
                     itemRow.Add(textCol);

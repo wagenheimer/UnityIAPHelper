@@ -55,15 +55,7 @@ namespace Wagenheimer.IAPHelper.Editor
             foreach (var prod in helper.products)
             {
                 var card = new VisualElement();
-                card.style.backgroundColor = new Color(0.16f, 0.16f, 0.18f);
-                card.style.borderWidth = 1;
-                card.style.borderColor = new Color(0.28f, 0.28f, 0.32f);
-                card.style.borderRadius = 4;
-                card.style.paddingTop = 8;
-                card.style.paddingBottom = 8;
-                card.style.paddingLeft = 10;
-                card.style.paddingRight = 10;
-                card.style.marginBottom = 6;
+                card.AddToClassList("iap-catalog-card");
 
                 var topRow = new VisualElement { style = { flexDirection = FlexDirection.Row, justifyContent = Justify.SpaceBetween, alignItems = Align.Center } };
                 var idLabel = new Label(prod.id ?? "(empty ID)")
@@ -87,7 +79,7 @@ namespace Wagenheimer.IAPHelper.Editor
                 string apple = !string.IsNullOrEmpty(prod.appleId) ? prod.appleId : prod.id;
                 storesRow.Add(CreateStoreChip("🍎 Apple", apple));
 
-                string google = !string.IsNullOrEmpty(prod.googleId) ? prod.googleId : prod.id;
+                string google = !string.IsNullOrEmpty(prod.googlePlayId) ? prod.googlePlayId : prod.id;
                 storesRow.Add(CreateStoreChip("🤖 Google", google));
 
                 if (!string.IsNullOrEmpty(prod.amazonId))
@@ -115,16 +107,7 @@ namespace Wagenheimer.IAPHelper.Editor
         private VisualElement CreateStoreChip(string label, string sku)
         {
             var chip = new VisualElement();
-            chip.style.backgroundColor = new Color(0.12f, 0.12f, 0.14f);
-            chip.style.borderRadius = 3;
-            chip.style.paddingTop = 2;
-            chip.style.paddingBottom = 2;
-            chip.style.paddingLeft = 6;
-            chip.style.paddingRight = 6;
-            chip.style.marginRight = 6;
-            chip.style.marginBottom = 4;
-            chip.style.flexDirection = FlexDirection.Row;
-            chip.style.alignItems = Align.Center;
+            chip.AddToClassList("iap-store-chip");
 
             var lbl = new Label(label) { style = { fontSize = 10, color = new Color(0.65f, 0.65f, 0.70f), marginRight = 4 } };
             var val = new Label(sku) { style = { fontSize = 10, unityFontStyleAndWeight = FontStyle.Bold, color = new Color(0.85f, 0.85f, 0.90f) } };

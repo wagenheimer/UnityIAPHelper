@@ -294,3 +294,23 @@
     color: var(--iap-text-dim);
     margin-top: 2px;
 }
+
+/* Catalog Card & Chips */
+.iap-catalog-card {
+    background-color: #19191d;
+    border-width: 1px;
+    border-color: #2f2f36;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+}
+
+.iap-store-chip {
+    background-color: #121214;
+    border-radius: 3px;
+    padding: 2px 6px;
+    margin-right: 6px;
+    margin-bottom: 4px;
+    flex-direction: row;
+    align-items: center;
+}
