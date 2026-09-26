@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-09-26
+
+### Changed
+- Minor release that bundles the 1.11.x work (Setup Audit copy / AI-prompt buttons, `OnRestoreSuccess`, I2 translation fix) under a new tag so projects installed from git pick it up: bump the tag in `Packages/manifest.json` (`...UnityIAPHelper.git#v1.12.0`) and let Unity re-resolve.
+
 ## [1.11.1] - 2026-09-26
 
 ### Added
