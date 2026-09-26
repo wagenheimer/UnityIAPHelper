@@ -95,6 +95,8 @@ namespace Wagenheimer.IAPHelper.Editor
             AuditFormAndButtonInstances(results, formInstances, buttonInstances);
             AuditProductIdCrossReference(results, formInstances, buttonInstances, effectiveCatalogIds);
             AuditSourceWiring(results, csFiles, helperInstances);
+            AuditErrorDialogWiring(results, csFiles, formInstances);
+            AuditRestoreFlow(results, csFiles, formInstances, FindAllComponents<UI.IAPRestoreButton>());
             AuditPackageVersion(results);
 
             AttachPrompts(results);
@@ -485,6 +487,135 @@ namespace Wagenheimer.IAPHelper.Editor
                     : "Without a grant listener, nothing in the game reacts when IAPHelper confirms a purchase or restore.",
                 FixHint = isEntitlementHandled ? null : "Subscribe to IAPHelper.Instance.OnEntitlementGranted at boot, or wire methods into OnEntitlementGranted in the IAPHelper Inspector."
             });
+        }
+
+        private static void AuditErrorDialogWiring(
+            List<AuditResult> results,
+            List<string> csFiles,
+            List<FoundComponent<BaseIAPForm>> formInstances)
+        {
+            // Only relevant when the game has purchase forms: BaseIAPForm.ShowError is what reports
+            // "no previous purchase found", "purchase failed", "restore failed", etc. to the player.
+            if (formInstances.Count == 0)
+                return;
+
+            bool isHooked = AnyFileMatches(csFiles, @"OnShowErrorNotification\s*(\+=|=(?!=))");
+
+            results.Add(new AuditResult
+            {
+                Category = "Purchase UI",
+                Title = isHooked
+                    ? "Error dialog is wired (BaseIAPForm.OnShowErrorNotification)"
+                    : "No error dialog popup is wired for IAP errors",
+                Severity = isHooked ? AuditSeverity.Pass : AuditSeverity.Warning,
+                Detail = isHooked
+                    ? "Found an assignment to BaseIAPForm.OnShowErrorNotification in code."
+                    : "Without this hook, BaseIAPForm only writes IAP errors to the console (Debug.LogError). The player sees nothing when Restore finds no previous purchase, a purchase fails, or the store is not ready.",
+                FixHint = isHooked
+                    ? null
+                    : "At boot, assign BaseIAPForm.OnShowErrorNotification = msg => <your error dialog>.ShowError(msg); (or override ShowError in your BaseIAPForm subclass)."
+            });
+        }
+
+        private static readonly Regex FormSubclassRegex = new Regex(
+            @"class\s+(?<name>\w+)\s*:\s*(?:[\w.]*\.)?BaseIAPForm\b",
+            RegexOptions.Compiled);
+
+        private static readonly Regex OnRestoreSuccessOverrideRegex = new Regex(
+            @"override\s+void\s+OnRestoreSuccess\s*\(",
+            RegexOptions.Compiled);
+
+        private static void AuditRestoreFlow(
+            List<AuditResult> results,
+            List<string> csFiles,
+            List<FoundComponent<BaseIAPForm>> formInstances,
+            List<FoundComponent<UI.IAPRestoreButton>> restoreButtons)
+        {
+            bool hasFormRestoreButton = formInstances.Any(f => f.Component.btRestorePurchases != null);
+            bool hasRestoreButtonComponent = restoreButtons.Count > 0;
+            bool hasCustomWiring = HasProjectAssetWithText("m_MethodName: RestorePurchases")
+                                   || AnyFileMatches(csFiles, @"\.RestorePurchases\s*\(");
+
+            bool hasRestoreEntry = hasFormRestoreButton || hasRestoreButtonComponent || hasCustomWiring;
+
+            results.Add(new AuditResult
+            {
+                Category = "Restore Purchases",
+                Title = hasRestoreEntry
+                    ? "A Restore Purchases entry point exists"
+                    : "No Restore Purchases button is wired",
+                Severity = hasRestoreEntry ? AuditSeverity.Pass : AuditSeverity.Warning,
+                Detail = hasRestoreEntry
+                    ? (hasRestoreButtonComponent ? "Found IAPRestoreButton in the project."
+                        : hasFormRestoreButton ? "Found BaseIAPForm.btRestorePurchases assigned."
+                        : "Found a button/UnityEvent or code calling RestorePurchases.")
+                    : "Apple App Store Review Guideline 3.1.1 requires a visible Restore Purchases control on iOS/macOS, and nothing in this project's prefabs, scenes or code triggers a restore.",
+                FixHint = hasRestoreEntry
+                    ? null
+                    : "Add an IAPRestoreButton to your Options/Shop screen, or assign BaseIAPForm.btRestorePurchases, or wire a button's OnClick to RestorePurchases."
+            });
+
+            // A BaseIAPForm restore only calls GrantPurchasedContent + OnProductAlreadyOwned by default,
+            // so a subclass that never overrides OnRestoreSuccess leaves its dialog open after a restore.
+            foreach (var file in csFiles)
+            {
+                string content;
+                try
+                {
+                    content = File.ReadAllText(file);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                var match = FormSubclassRegex.Match(content);
+                if (!match.Success)
+                    continue;
+
+                bool overridesRestoreSuccess = OnRestoreSuccessOverrideRegex.IsMatch(content);
+                var location = ToProjectRelativePath(file);
+
+                results.Add(new AuditResult
+                {
+                    Category = "Restore Purchases",
+                    Title = overridesRestoreSuccess
+                        ? $"{match.Groups["name"].Value} handles OnRestoreSuccess"
+                        : $"{match.Groups["name"].Value} does not override OnRestoreSuccess",
+                    Severity = overridesRestoreSuccess ? AuditSeverity.Pass : AuditSeverity.Warning,
+                    Detail = overridesRestoreSuccess
+                        ? location
+                        : $"{location}: after a successful Restore the form stays open and shows no result to the player, because only a live purchase calls OnPurchaseSuccess.",
+                    FixHint = overridesRestoreSuccess
+                        ? null
+                        : $"In {match.Groups["name"].Value}, override OnRestoreSuccess() to close the dialog / refresh the UI (e.g. the same thing OnPurchaseSuccess does)."
+                });
+            }
+        }
+
+        /// <summary>
+        /// True if any prefab or scene under Assets/ contains the given text. Used to detect UnityEvent
+        /// wiring (e.g. a button's OnClick pointing at RestorePurchases), which is not visible in C# source.
+        /// </summary>
+        private static bool HasProjectAssetWithText(string text)
+        {
+            foreach (var guid in AssetDatabase.FindAssets("t:Prefab t:Scene"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!IsProjectAssetPath(path))
+                    continue;
+
+                try
+                {
+                    if (File.ReadAllText(path).Contains(text))
+                        return true;
+                }
+                catch
+                {
+                    // Unreadable asset: treat as "not found" rather than failing the whole audit.
+                }
+            }
+            return false;
         }
 
         private static void AuditPackageVersion(List<AuditResult> results)

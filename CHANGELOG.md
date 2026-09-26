@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-09-26
+
+### Fixed
+- `BaseIAPForm.Translate` never resolved I2 terms (it returned the raw key, e.g. "nopreviouspurchasefound"): the reflection lookup required an exact `GetTranslation(string)` signature, but I2's methods have optional parameters. It now finds the method by name and fills the optional parameters.
+
+### Added
+- `BaseIAPForm.OnRestoreSuccess()` virtual hook, called after a user-triggered Restore grants the form's product. Override it to close the dialog or refresh the UI (`OnProductAlreadyOwned` also fires when the form opens with the product already owned, so it is not suitable for closing).
+- Setup Audit "Restore Purchases" checks: warns when no Restore button/wiring exists (Apple guideline 3.1.1), and warns for each `BaseIAPForm` subclass that does not override `OnRestoreSuccess`.
+- Setup Audit warns when no error dialog is wired to `BaseIAPForm.OnShowErrorNotification`, since otherwise IAP errors (e.g. "no previous purchase found" on Restore) only reach the console and the player sees nothing.
+
 ## [1.10.0] - 2026-09-25
 
 ### Added

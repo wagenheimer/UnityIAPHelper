@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 
 using TMPro;
@@ -212,6 +213,17 @@ namespace Wagenheimer.IAPHelper
             Debug.Log($"[{GetType().Name}] Purchase completed successfully!");
         }
 
+        /// <summary>
+        /// Called once after a user-triggered Restore found this form's product and
+        /// <see cref="GrantPurchasedContent"/> ran. Override to close the dialog or refresh the UI.
+        /// Unlike <see cref="OnProductAlreadyOwned"/>, it is NOT called when the form opens with the
+        /// product already owned, so it is safe to close the form here.
+        /// </summary>
+        protected virtual void OnRestoreSuccess()
+        {
+            Debug.Log($"[{GetType().Name}] Purchase restored successfully!");
+        }
+
         #endregion
 
         #region Restore Purchases
@@ -250,6 +262,7 @@ namespace Wagenheimer.IAPHelper
                             GrantPurchasedContent();
                             ShowSuccess(Translate("purchaserestored"));
                             OnProductAlreadyOwned();
+                            OnRestoreSuccess();
                         }
                         else
                         {
@@ -363,11 +376,19 @@ namespace Wagenheimer.IAPHelper
                 var locType = Type.GetType("I2.Loc.LocalizationManager, Assembly-CSharp");
                 if (locType != null)
                 {
-                    var method = locType.GetMethod("GetTranslation", new[] { typeof(string) })
-                              ?? locType.GetMethod("GetTermTranslation", new[] { typeof(string) });
+                    // I2's GetTranslation has optional parameters, so an exact (string) signature lookup
+                    // fails: find it by name and fill the optional ones with their defaults.
+                    var method = FindTranslationMethod(locType, "GetTranslation")
+                              ?? FindTranslationMethod(locType, "GetTermTranslation");
                     if (method != null)
                     {
-                        var res = method.Invoke(null, new object[] { key }) as string;
+                        var parameters = method.GetParameters();
+                        var args = new object[parameters.Length];
+                        args[0] = key;
+                        for (int i = 1; i < args.Length; i++)
+                            args[i] = Type.Missing;
+
+                        var res = method.Invoke(null, BindingFlags.Default, null, args, null) as string;
                         if (!string.IsNullOrEmpty(res))
                             return res;
                     }
@@ -376,6 +397,28 @@ namespace Wagenheimer.IAPHelper
             catch { }
 
             return key;
+        }
+
+        private static MethodInfo FindTranslationMethod(Type type, string name)
+        {
+            foreach (var m in type.GetMethods(BindingFlags.Public | BindingFlags.Static))
+            {
+                if (m.Name != name || m.ReturnType != typeof(string))
+                    continue;
+
+                var ps = m.GetParameters();
+                if (ps.Length == 0 || ps[0].ParameterType != typeof(string))
+                    continue;
+
+                bool restOptional = true;
+                for (int i = 1; i < ps.Length; i++)
+                    restOptional &= ps[i].IsOptional;
+
+                if (restOptional)
+                    return m;
+            }
+
+            return null;
         }
 
         protected virtual string GetErrorMessage(PurchaseFailureReason reason)
