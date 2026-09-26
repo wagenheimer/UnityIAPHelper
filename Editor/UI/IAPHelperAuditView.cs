@@ -91,14 +91,29 @@ namespace Wagenheimer.IAPHelper.Editor
         /// Button that copies <paramref name="getText"/>() to the clipboard and briefly shows "Copied".
         /// Shows a hint instead when there is nothing to copy (audit not run yet).
         /// </summary>
-        private static Button CreateCopyButton(string label, string tooltip, Func<string> getText)
+        private const float IconButtonWidth = 30f;
+        private const float BadgeWidth = 72f;
+
+        /// <summary>Compact fixed-width copy button for the per-finding action column.</summary>
+        private static Button CreateIconButton(string icon, string tooltip, Func<string> getText)
+        {
+            var button = CreateCopyButton(icon, tooltip, getText, "✓");
+            button.style.width = IconButtonWidth;
+            button.style.marginLeft = 4;
+            button.style.marginRight = 0;
+            button.style.paddingLeft = 0;
+            button.style.paddingRight = 0;
+            return button;
+        }
+
+        private static Button CreateCopyButton(string label, string tooltip, Func<string> getText, string copiedLabel = "✓ Copied")
         {
             var button = new Button { text = label, tooltip = tooltip };
             button.AddToClassList("iap-toolbar-btn");
             button.clicked += () =>
             {
                 var text = getText();
-                button.text = string.IsNullOrEmpty(text) ? "Run the audit first" : "✓ Copied";
+                button.text = string.IsNullOrEmpty(text) ? "Run the audit first" : copiedLabel;
                 if (!string.IsNullOrEmpty(text))
                     GUIUtility.systemCopyBuffer = text;
 
@@ -201,20 +216,30 @@ namespace Wagenheimer.IAPHelper.Editor
 
                     itemRow.Add(textCol);
 
+                    // Fixed-width action column so buttons and badges line up across every row,
+                    // whether or not the finding has an AI prompt.
                     var itemCopy = item;
-                    var copyBtn = CreateCopyButton("📋", "Copy this finding.", () => FormatFinding(itemCopy));
-                    copyBtn.style.marginRight = 4;
-                    itemRow.Add(copyBtn);
+                    var actions = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, flexShrink = 0 } };
+
+                    var copyBtn = CreateIconButton("📋", "Copy this finding.", () => FormatFinding(itemCopy));
+                    actions.Add(copyBtn);
 
                     if (!string.IsNullOrEmpty(item.Prompt))
                     {
-                        var promptBtn = CreateCopyButton("🤖", "Copy an AI prompt that fixes this finding.", () => itemCopy.Prompt);
-                        promptBtn.style.marginRight = 6;
-                        itemRow.Add(promptBtn);
+                        actions.Add(CreateIconButton("🤖", "Copy an AI prompt that fixes this finding.", () => itemCopy.Prompt));
+                    }
+                    else
+                    {
+                        actions.Add(new VisualElement { style = { width = IconButtonWidth, marginLeft = 4, marginRight = 0 } });
                     }
 
                     var badge = IAPHelperUIStyle.CreateBadge(item.Severity.ToString(), item.Severity.ToString().ToLower());
-                    itemRow.Add(badge);
+                    badge.style.width = BadgeWidth;
+                    badge.style.marginLeft = 8;
+                    badge.style.unityTextAlign = TextAnchor.MiddleCenter;
+                    actions.Add(badge);
+
+                    itemRow.Add(actions);
 
                     card.Add(itemRow);
                 }

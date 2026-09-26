@@ -309,6 +309,19 @@ namespace Wagenheimer.IAPHelper.Editor
                     });
                 }
 
+                if (helper.autoConfigurePlatformRestore)
+                {
+                    // Awake() overrides autoRestorePurchases per platform, so the serialized value is irrelevant.
+                    results.Add(new AuditResult
+                    {
+                        Category = "IAPHelper",
+                        Title = "autoRestorePurchases is configured per platform at runtime",
+                        Severity = AuditSeverity.Pass,
+                        Detail = $"autoConfigurePlatformRestore is on: true on Android/Amazon, false on iOS/macOS ('{found.Location}')."
+                    });
+                    continue;
+                }
+
                 results.Add(new AuditResult
                 {
                     Category = "IAPHelper",
@@ -689,6 +702,12 @@ namespace Wagenheimer.IAPHelper.Editor
                 {
                     foreach (var component in root.GetComponentsInChildren<T>(true))
                     {
+                        // An instance of a project prefab is the same component already found in the
+                        // prefab scan above: counting it again reports a duplicate that does not exist.
+                        var source = PrefabUtility.GetCorrespondingObjectFromOriginalSource(component);
+                        if (source != null && IsProjectAssetPath(AssetDatabase.GetAssetPath(source)))
+                            continue;
+
                         found.Add(new FoundComponent<T>
                         {
                             Component = component,

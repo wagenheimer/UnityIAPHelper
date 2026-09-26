@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.1] - 2026-09-26
+
+### Fixed
+- Setup Audit no longer reports "2 IAPHelper components found" when a scene only holds an instance of a project prefab that was already counted.
+- Setup Audit no longer flags `autoRestorePurchases = False` when `autoConfigurePlatformRestore` is on (the runtime sets it per platform in `Awake`); it now reports a Pass.
+- Setup Audit tab: the per-finding copy buttons and severity badge now sit in a fixed-width column, so rows line up whether or not a finding has an AI prompt.
+
 ## [1.13.0] - 2026-09-26
 
 ### Added
