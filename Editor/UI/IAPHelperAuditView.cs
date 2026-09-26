@@ -52,6 +52,21 @@ namespace Wagenheimer.IAPHelper.Editor
 
             headerCard.Add(actionsRow);
 
+            var copyRow = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, marginBottom = 8 } };
+
+            var copyReportBtn = CreateCopyButton("📋 Copy Report", "Copy the full audit as Markdown.", () =>
+                _results != null ? IAPHelperAudit.ToMarkdown(_results) : null);
+            copyRow.Add(copyReportBtn);
+
+            var copyPromptBtn = CreateCopyButton("🤖 Copy AI Fix Prompt (all)", "Copy one ready-to-paste prompt that makes an AI agent fix every warning and failure.", () =>
+                _results != null ? IAPHelperAudit.ToPromptMarkdown(_results) : null);
+            copyPromptBtn.style.backgroundColor = new Color(0.18f, 0.42f, 0.75f);
+            copyPromptBtn.style.color = Color.white;
+            copyPromptBtn.style.unityFontStyleAndWeight = FontStyle.Bold;
+            copyRow.Add(copyPromptBtn);
+
+            headerCard.Add(copyRow);
+
             _summaryLabel = new Label("Click 'Run Audit Now' to scan your project for potential store submission issues.");
             _summaryLabel.style.fontSize = 11;
             _summaryLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
@@ -68,6 +83,38 @@ namespace Wagenheimer.IAPHelper.Editor
         {
             _results = IAPHelperAudit.RunAudit();
             RefreshResults();
+        }
+
+        private const long CopiedFeedbackMs = 1500;
+
+        /// <summary>
+        /// Button that copies <paramref name="getText"/>() to the clipboard and briefly shows "Copied".
+        /// Shows a hint instead when there is nothing to copy (audit not run yet).
+        /// </summary>
+        private static Button CreateCopyButton(string label, string tooltip, Func<string> getText)
+        {
+            var button = new Button { text = label, tooltip = tooltip };
+            button.AddToClassList("iap-toolbar-btn");
+            button.clicked += () =>
+            {
+                var text = getText();
+                button.text = string.IsNullOrEmpty(text) ? "Run the audit first" : "✓ Copied";
+                if (!string.IsNullOrEmpty(text))
+                    GUIUtility.systemCopyBuffer = text;
+
+                button.schedule.Execute(() => button.text = label).ExecuteLater(CopiedFeedbackMs);
+            };
+            return button;
+        }
+
+        private static string FormatFinding(AuditResult r)
+        {
+            var text = $"[{r.Severity}] {r.Category} - {r.Title}";
+            if (!string.IsNullOrEmpty(r.Detail))
+                text += "\n" + r.Detail;
+            if (!string.IsNullOrEmpty(r.FixHint))
+                text += "\nHow to fix: " + r.FixHint;
+            return text;
         }
 
         private void SetFilter(AuditSeverity? filter)
@@ -153,6 +200,18 @@ namespace Wagenheimer.IAPHelper.Editor
                     }
 
                     itemRow.Add(textCol);
+
+                    var itemCopy = item;
+                    var copyBtn = CreateCopyButton("📋", "Copy this finding.", () => FormatFinding(itemCopy));
+                    copyBtn.style.marginRight = 4;
+                    itemRow.Add(copyBtn);
+
+                    if (!string.IsNullOrEmpty(item.Prompt))
+                    {
+                        var promptBtn = CreateCopyButton("🤖", "Copy an AI prompt that fixes this finding.", () => itemCopy.Prompt);
+                        promptBtn.style.marginRight = 6;
+                        itemRow.Add(promptBtn);
+                    }
 
                     var badge = IAPHelperUIStyle.CreateBadge(item.Severity.ToString(), item.Severity.ToString().ToLower());
                     itemRow.Add(badge);
