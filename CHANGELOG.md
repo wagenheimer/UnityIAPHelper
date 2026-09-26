@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-09-26
+
+### Added
+- `IAPHelper.globalEvents`: every IAPHelper event as an Inspector UnityEvent in one place (`onInitialized`, `onConnectionFailed`, `onProductsFetched`, `onProductsFetchFailed`, `onPurchasesFetched`, `onPurchasesFetchFailed`, `onPurchasePending`, `onPurchaseSuccess`, `onPurchaseFailed`, `onPurchaseCancelled`, `onPurchaseDeferred`, `onPromotionalPurchaseIntercepted`, `onRestoreStarted`, `onRestoreCompleted(bool)`, `onEntitlementGranted(id)`, `onEntitlementRevoked(id)`). A listener that throws is logged and does not abort the store flow.
+- Inspector "Events" card shows how many global events and per-product granted/revoked events have listeners wired.
+
+### Fixed
+- The "Global Lifecycle Events" card in the Inspector was always empty: it bound six fields that never existed on `IAPHelper`. It now binds the real `globalEvents`.
+- Inspector header badge was hardcoded to `v1.8.0` (and the Dashboard fell back to it); both now show the real package version.
+
 ## [1.12.0] - 2026-09-26
 
 ### Changed

@@ -97,6 +97,24 @@ namespace Wagenheimer.IAPHelper
 
         #endregion
 
+        [Tooltip("Every IAPHelper event as an Inspector UnityEvent, in one place: connection, products, purchase, restore and entitlement. Wire game methods here with zero code.")]
+        public IAPGlobalEvents globalEvents = new IAPGlobalEvents();
+
+        /// <summary>
+        /// Invokes a serialized UnityEvent without letting a broken listener abort the store flow.
+        /// </summary>
+        private static void Raise(string eventName, Action invoke)
+        {
+            try
+            {
+                invoke();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[IAPHelper] Error in globalEvents.{eventName} listener: {ex.Message}");
+            }
+        }
+
         #region Events
 
         public event Action OnInitialized;
@@ -299,6 +317,7 @@ namespace Wagenheimer.IAPHelper
                 _initializing = false;
                 Debug.LogError($"[IAPHelper] Exception during initialization: {ex.Message}\n{ex.StackTrace}");
                 OnConnectionFailed?.Invoke(ex.Message);
+                Raise(nameof(IAPGlobalEvents.onConnectionFailed), () => globalEvents.onConnectionFailed?.Invoke(ex.Message));
             }
         }
 
@@ -383,6 +402,7 @@ namespace Wagenheimer.IAPHelper
             _initializing = false;
             Debug.LogError($"[IAPHelper] Disconnected from the store: {failure.message}");
             OnConnectionFailed?.Invoke(failure.message);
+            Raise(nameof(IAPGlobalEvents.onConnectionFailed), () => globalEvents.onConnectionFailed?.Invoke(failure.message));
         }
 
         private void HandleAuthAccountChanged()
@@ -460,6 +480,8 @@ namespace Wagenheimer.IAPHelper
 
             OnProductsFetched?.Invoke(fetchedProducts);
             OnInitialized?.Invoke();
+            Raise(nameof(IAPGlobalEvents.onProductsFetched), () => globalEvents.onProductsFetched?.Invoke());
+            Raise(nameof(IAPGlobalEvents.onInitialized), () => globalEvents.onInitialized?.Invoke());
         }
 
         private void HandleProductsFetchFailed(ProductFetchFailed failure)
@@ -468,6 +490,7 @@ namespace Wagenheimer.IAPHelper
             string reason = failure?.FailureReason.ToString() ?? "Unknown";
             Debug.LogError($"[IAPHelper] Failed to load products: {reason}");
             OnProductsFetchFailed?.Invoke(reason);
+            Raise(nameof(IAPGlobalEvents.onProductsFetchFailed), () => globalEvents.onProductsFetchFailed?.Invoke(reason));
         }
 
         #endregion
@@ -525,6 +548,7 @@ namespace Wagenheimer.IAPHelper
             }
 
             OnPurchasesFetched?.Invoke(orders);
+            Raise(nameof(IAPGlobalEvents.onPurchasesFetched), () => globalEvents.onPurchasesFetched?.Invoke());
         }
 
         private void HandlePurchasesFetchFailed(PurchasesFetchFailureDescription failure)
@@ -534,6 +558,7 @@ namespace Wagenheimer.IAPHelper
                 Debug.LogWarning($"[IAPHelper] Failed to fetch purchases: {failure.message} ({failure.failureReason})");
             }
             OnPurchasesFetchFailed?.Invoke(failure.message);
+            Raise(nameof(IAPGlobalEvents.onPurchasesFetchFailed), () => globalEvents.onPurchasesFetchFailed?.Invoke(failure.message));
         }
 
         #endregion
@@ -686,6 +711,7 @@ namespace Wagenheimer.IAPHelper
             ConfirmPurchase(order);
 
             OnPurchasePending?.Invoke(order);
+            Raise(nameof(IAPGlobalEvents.onPurchasePending), () => globalEvents.onPurchasePending?.Invoke(GetOrderProductId(order)));
         }
 
         /// <summary>
@@ -735,6 +761,7 @@ namespace Wagenheimer.IAPHelper
             try
             {
                 OnEntitlementGranted?.Invoke(productId);
+                Raise(nameof(IAPGlobalEvents.onEntitlementGranted), () => globalEvents.onEntitlementGranted?.Invoke(productId));
             }
             catch (Exception ex)
             {
@@ -769,10 +796,12 @@ namespace Wagenheimer.IAPHelper
             if (order is ConfirmedOrder)
             {
                 Debug.Log($"[IAPHelper] Purchase confirmed successfully: {productId}");
+                Raise(nameof(IAPGlobalEvents.onPurchaseSuccess), () => globalEvents.onPurchaseSuccess?.Invoke(productId));
             }
             else if (order is FailedOrder failed)
             {
                 Debug.LogError($"[IAPHelper] Purchase confirmation failed for: {productId} - {failed.Details}");
+                Raise(nameof(IAPGlobalEvents.onPurchaseFailed), () => globalEvents.onPurchaseFailed?.Invoke($"{failed.Details}"));
             }
 
             OnPurchaseConfirmed?.Invoke(order);
@@ -782,12 +811,18 @@ namespace Wagenheimer.IAPHelper
         {
             Debug.LogError($"[IAPHelper] Purchase failed: {failedOrder.FailureReason} - {failedOrder.Details}");
             OnPurchaseFailed?.Invoke(failedOrder);
+
+            if (failedOrder.FailureReason == PurchaseFailureReason.UserCancelled)
+                Raise(nameof(IAPGlobalEvents.onPurchaseCancelled), () => globalEvents.onPurchaseCancelled?.Invoke());
+            else
+                Raise(nameof(IAPGlobalEvents.onPurchaseFailed), () => globalEvents.onPurchaseFailed?.Invoke(failedOrder.FailureReason.ToString()));
         }
 
         private void HandlePurchaseDeferred(DeferredOrder deferredOrder)
         {
             Debug.Log("[IAPHelper] Purchase deferred (awaiting approval, e.g. Ask-to-Buy).");
             OnPurchaseDeferred?.Invoke(deferredOrder);
+            Raise(nameof(IAPGlobalEvents.onPurchaseDeferred), () => globalEvents.onPurchaseDeferred?.Invoke());
         }
 
         private void HandlePromotionalPurchaseIntercepted(Product product)
@@ -796,6 +831,7 @@ namespace Wagenheimer.IAPHelper
             try
             {
                 OnPromotionalPurchaseIntercepted?.Invoke(product);
+                Raise(nameof(IAPGlobalEvents.onPromotionalPurchaseIntercepted), () => globalEvents.onPromotionalPurchaseIntercepted?.Invoke(product.definition.id));
             }
             catch (Exception ex)
             {
@@ -854,6 +890,7 @@ namespace Wagenheimer.IAPHelper
             try
             {
                 OnEntitlementRevoked?.Invoke(productId);
+                Raise(nameof(IAPGlobalEvents.onEntitlementRevoked), () => globalEvents.onEntitlementRevoked?.Invoke(productId));
             }
             catch (Exception ex)
             {
@@ -1068,11 +1105,19 @@ namespace Wagenheimer.IAPHelper
         public void RestorePurchases(Action<bool, string> onComplete = null)
         {
             Debug.Log("[IAPHelper] Restoring purchases...");
+            Raise(nameof(IAPGlobalEvents.onRestoreStarted), () => globalEvents.onRestoreStarted?.Invoke());
+
+            var callerOnComplete = onComplete;
+            onComplete = (success, error) =>
+            {
+                Raise(nameof(IAPGlobalEvents.onRestoreCompleted), () => globalEvents.onRestoreCompleted?.Invoke(success));
+                callerOnComplete?.Invoke(success, error);
+            };
 
             if (_storeController == null)
             {
                 Debug.LogError("[IAPHelper] Cannot restore: StoreController is null.");
-                onComplete?.Invoke(false, "StoreController not initialized");
+                onComplete(false, "StoreController not initialized");
                 return;
             }
 
@@ -1174,6 +1219,52 @@ namespace Wagenheimer.IAPHelper
 
         [Tooltip("Dispatched when this product's entitlement is revoked (refund, family sharing cancellation, or a debug revoke). Connect game methods here directly in the Inspector with zero code!")]
         public UnityEngine.Events.UnityEvent onEntitlementRevoked = new UnityEngine.Events.UnityEvent();
+    }
+
+    /// <summary>
+    /// Every IAPHelper event exposed as an Inspector UnityEvent, grouped by stage. String arguments are
+    /// the product id (or the error/reason text for failures). Per-product reactions live on
+    /// <see cref="ProductConfig"/> (onEntitlementGranted / onEntitlementRevoked).
+    /// </summary>
+    [Serializable]
+    public class IAPGlobalEvents
+    {
+        [Header("Store connection")]
+        public UnityEngine.Events.UnityEvent onInitialized = new UnityEngine.Events.UnityEvent();
+        [Tooltip("Argument: error message.")]
+        public UnityEngine.Events.UnityEvent<string> onConnectionFailed = new UnityEngine.Events.UnityEvent<string>();
+
+        [Header("Products & owned purchases")]
+        public UnityEngine.Events.UnityEvent onProductsFetched = new UnityEngine.Events.UnityEvent();
+        [Tooltip("Argument: failure reason.")]
+        public UnityEngine.Events.UnityEvent<string> onProductsFetchFailed = new UnityEngine.Events.UnityEvent<string>();
+        public UnityEngine.Events.UnityEvent onPurchasesFetched = new UnityEngine.Events.UnityEvent();
+        [Tooltip("Argument: failure message.")]
+        public UnityEngine.Events.UnityEvent<string> onPurchasesFetchFailed = new UnityEngine.Events.UnityEvent<string>();
+
+        [Header("Purchase")]
+        [Tooltip("Argument: product id. Fired when the store reports the purchase as pending, before it is confirmed.")]
+        public UnityEngine.Events.UnityEvent<string> onPurchasePending = new UnityEngine.Events.UnityEvent<string>();
+        [Tooltip("Argument: product id. Fired once the store confirmed the purchase.")]
+        public UnityEngine.Events.UnityEvent<string> onPurchaseSuccess = new UnityEngine.Events.UnityEvent<string>();
+        [Tooltip("Argument: failure reason. Not fired when the player cancels (see onPurchaseCancelled).")]
+        public UnityEngine.Events.UnityEvent<string> onPurchaseFailed = new UnityEngine.Events.UnityEvent<string>();
+        public UnityEngine.Events.UnityEvent onPurchaseCancelled = new UnityEngine.Events.UnityEvent();
+        [Tooltip("Awaiting approval (e.g. Ask-to-Buy).")]
+        public UnityEngine.Events.UnityEvent onPurchaseDeferred = new UnityEngine.Events.UnityEvent();
+        [Tooltip("Argument: product id. Apple promotional purchase intercepted.")]
+        public UnityEngine.Events.UnityEvent<string> onPromotionalPurchaseIntercepted = new UnityEngine.Events.UnityEvent<string>();
+
+        [Header("Restore")]
+        public UnityEngine.Events.UnityEvent onRestoreStarted = new UnityEngine.Events.UnityEvent();
+        [Tooltip("Argument: true if the restore succeeded.")]
+        public UnityEngine.Events.UnityEvent<bool> onRestoreCompleted = new UnityEngine.Events.UnityEvent<bool>();
+
+        [Header("Entitlement (any product)")]
+        [Tooltip("Argument: product id. Live purchase or restore. For one specific product, use its own onEntitlementGranted.")]
+        public UnityEngine.Events.UnityEvent<string> onEntitlementGranted = new UnityEngine.Events.UnityEvent<string>();
+        [Tooltip("Argument: product id. Refund or revoke.")]
+        public UnityEngine.Events.UnityEvent<string> onEntitlementRevoked = new UnityEngine.Events.UnityEvent<string>();
     }
 
     public class PurchaseResult

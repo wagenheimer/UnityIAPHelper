@@ -166,7 +166,7 @@ namespace Wagenheimer.IAPHelper.Editor
             }
         }
 
-        private static string GetPackageVersion()
+        internal static string GetPackageVersion()
         {
             try
             {
@@ -179,7 +179,7 @@ namespace Wagenheimer.IAPHelper.Editor
                 }
             }
             catch { }
-            return "1.8.0";
+            return "?";
         }
 
         [Serializable]

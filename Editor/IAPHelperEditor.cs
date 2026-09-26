@@ -37,7 +37,7 @@ namespace Wagenheimer.IAPHelper.Editor
             left.Add(icon);
             left.Add(title);
 
-            var badge = IAPHelperUIStyle.CreateBadge("v1.8.0", "info");
+            var badge = IAPHelperUIStyle.CreateBadge("v" + IAPHelperDashboardWindow.GetPackageVersion(), "info");
             left.Add(badge);
             row.Add(left);
 
@@ -84,14 +84,20 @@ namespace Wagenheimer.IAPHelper.Editor
             root.Add(initCard);
 
             // 4. Global Events Card
-            var eventCard = IAPHelperUIStyle.CreateCard("⚡ Global Lifecycle Events");
-            eventCard.Add(new PropertyField(serializedObject.FindProperty("onInitialized")));
-            eventCard.Add(new PropertyField(serializedObject.FindProperty("onInitializeFailed")));
-            eventCard.Add(new PropertyField(serializedObject.FindProperty("onPurchaseSuccess")));
-            eventCard.Add(new PropertyField(serializedObject.FindProperty("onPurchaseFailed")));
-            eventCard.Add(new PropertyField(serializedObject.FindProperty("onPurchaseCancelled")));
-            eventCard.Add(new PropertyField(serializedObject.FindProperty("onRestoreCompleted")));
+            var eventCard = IAPHelperUIStyle.CreateCard("⚡ Events", "Every IAPHelper event in one place. Reactions for one specific product live on that product above.");
+            var eventsProp = serializedObject.FindProperty("globalEvents");
+
+            var wiringSummary = new Label();
+            wiringSummary.style.whiteSpace = WhiteSpace.Normal;
+            wiringSummary.style.fontSize = 11;
+            wiringSummary.style.marginBottom = 6;
+            eventCard.Add(wiringSummary);
+            eventCard.Add(new PropertyField(eventsProp));
             root.Add(eventCard);
+
+            void RefreshWiringSummary() => wiringSummary.text = BuildWiringSummary(eventsProp, serializedObject.FindProperty("products"));
+            RefreshWiringSummary();
+            root.TrackSerializedObjectValue(serializedObject, _ => RefreshWiringSummary());
 
             // 5. Play Mode Diagnostics (if running)
             if (Application.isPlaying)
@@ -109,6 +115,54 @@ namespace Wagenheimer.IAPHelper.Editor
             }
 
             return root;
+        }
+
+        private const string PersistentCallsPath = "m_PersistentCalls.m_Calls";
+
+        /// <summary>
+        /// One-glance overview of which Inspector events already have listeners wired: the global
+        /// events, plus the granted/revoked events of each product.
+        /// </summary>
+        private static string BuildWiringSummary(SerializedProperty globalEvents, SerializedProperty products)
+        {
+            var wired = new System.Collections.Generic.List<string>();
+            int total = 0;
+
+            var child = globalEvents.Copy();
+            var end = globalEvents.GetEndProperty();
+            bool enterChildren = true;
+            while (child.NextVisible(enterChildren) && !SerializedProperty.EqualContents(child, end))
+            {
+                enterChildren = false;
+                total++;
+
+                int count = ListenerCount(child);
+                if (count > 0)
+                    wired.Add($"{child.name} ({count})");
+            }
+
+            var text = $"Global events wired: {wired.Count} of {total}" +
+                       (wired.Count > 0 ? "\n" + string.Join(", ", wired) : "");
+
+            if (products != null)
+            {
+                for (int i = 0; i < products.arraySize; i++)
+                {
+                    var product = products.GetArrayElementAtIndex(i);
+                    var id = product.FindPropertyRelative("id")?.stringValue;
+                    int granted = ListenerCount(product.FindPropertyRelative("onEntitlementGranted"));
+                    int revoked = ListenerCount(product.FindPropertyRelative("onEntitlementRevoked"));
+                    text += $"\nProduct '{id}': granted {granted}, revoked {revoked}";
+                }
+            }
+
+            return text;
+        }
+
+        private static int ListenerCount(SerializedProperty unityEvent)
+        {
+            var calls = unityEvent?.FindPropertyRelative(PersistentCallsPath);
+            return calls != null ? calls.arraySize : 0;
         }
     }
 }
