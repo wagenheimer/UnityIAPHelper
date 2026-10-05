@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -24,6 +25,17 @@ namespace Wagenheimer.IAPHelper
         /// Optional hook for external game save systems to report owned products (e.g. SaveData.UnlockedGame).
         /// </summary>
         public static Func<string, bool> HasPurchasedFallback;
+
+        // Which store-id branch this build compiles (see the product definition mapping in Initialize).
+#if AMAZON_STORE || UNITY_AMAZON
+        private const string StoreIdBranch = "Amazon id";
+#elif UNITY_ANDROID
+        private const string StoreIdBranch = "Google Play id";
+#elif UNITY_IOS || UNITY_STANDALONE_OSX
+        private const string StoreIdBranch = "Apple id";
+#else
+        private const string StoreIdBranch = "main id";
+#endif
 
         #endregion
 
@@ -444,6 +456,8 @@ namespace Wagenheimer.IAPHelper
                         storeSpecificId = product.appleId;
 #endif
 
+                    Debug.Log($"[IAPHelper] Product '{product.id}' ({product.type}) -> store id '{storeSpecificId}' [{StoreIdBranch}]");
+
                     if (!string.IsNullOrEmpty(storeSpecificId) && storeSpecificId != product.id)
                     {
                         productDefinitions.Add(new ProductDefinition(product.id, storeSpecificId, product.type));
@@ -578,10 +592,12 @@ namespace Wagenheimer.IAPHelper
                 var product = GetProduct(productId);
                 if (product != null)
                 {
+                    Debug.Log($"[IAPHelper] Purchase('{productId}') -> store product '{product.definition.storeSpecificId}' ({product.metadata?.localizedPriceString}), available={product.availableToPurchase}, platform={Application.platform}. Opening the store...");
                     _storeController.PurchaseProduct(product);
                 }
                 else
                 {
+                    Debug.LogWarning($"[IAPHelper] Purchase('{productId}'): product not in the fetched cache, purchasing by id. Opening the store...");
                     _storeController.PurchaseProduct(productId);
                 }
             }
@@ -609,8 +625,11 @@ namespace Wagenheimer.IAPHelper
         {
             var tcs = new TaskCompletionSource<PurchaseResult>();
 
-            if (HasPurchased(productId))
+            Debug.Log($"[IAPHelper] PurchaseAsync('{productId}') requested | connected={IsConnected}, productsLoaded={ProductsLoaded} | {DescribeOwnership(productId)}");
+
+            if (TryGetOwnershipSource(productId, out var ownedSource))
             {
+                Debug.Log($"[IAPHelper] '{productId}' is already owned via {ownedSource}: skipping the store purchase.");
                 onGrantContent?.Invoke();
                 return new PurchaseResult { IsSuccess = true, IsAlreadyOwned = true, ProductId = productId };
             }
@@ -1031,8 +1050,21 @@ namespace Wagenheimer.IAPHelper
             return product != null && product.availableToPurchase;
         }
 
-        public bool HasPurchased(string productId)
+        public bool HasPurchased(string productId) => TryGetOwnershipSource(productId, out _);
+
+        /// <summary>
+        /// Human-readable reason <see cref="HasPurchased"/> answers as it does ("owned via ..." or "not owned").
+        /// Useful in logs: it tells a real store purchase apart from a local fallback.
+        /// </summary>
+        public string DescribeOwnership(string productId)
         {
+            return TryGetOwnershipSource(productId, out var source) ? $"owned via {source}" : "not owned";
+        }
+
+        private bool TryGetOwnershipSource(string productId, out string source)
+        {
+            source = null;
+
             if (_storeController != null)
             {
                 var purchases = _storeController.GetPurchases();
@@ -1047,7 +1079,10 @@ namespace Wagenheimer.IAPHelper
                                 foreach (var item in confirmed.CartOrdered.Items())
                                 {
                                     if (item.Product != null && (item.Product.definition.id == productId || item.Product.uSku == productId))
+                                    {
+                                        source = "store confirmed order";
                                         return true;
+                                    }
                                 }
                             }
 
@@ -1059,8 +1094,12 @@ namespace Wagenheimer.IAPHelper
                                     {
                                         if (info.subscriptionInfo != null)
                                         {
-                                            return info.subscriptionInfo.IsSubscribed() == Result.True;
+                                            bool subscribed = info.subscriptionInfo.IsSubscribed() == Result.True;
+                                            source = "store subscription info";
+                                            return subscribed;
                                         }
+
+                                        source = "store purchase info";
                                         return true;
                                     }
                                 }
@@ -1075,15 +1114,28 @@ namespace Wagenheimer.IAPHelper
             if (config != null && !string.IsNullOrEmpty(config.playerPrefsFallbackKey))
             {
                 if (PlayerPrefs.GetInt(config.playerPrefsFallbackKey, 0) == 1)
+                {
+                    source = $"PlayerPrefs fallback key '{config.playerPrefsFallbackKey}'";
                     return true;
+                }
             }
 
             if (HasPurchasedFallback != null && HasPurchasedFallback(productId))
             {
+                source = "HasPurchasedFallback (game save)";
                 return true;
             }
 
             return false;
+        }
+
+        /// <summary>One line per configured product with its current ownership, for logs.</summary>
+        private string OwnershipSummary()
+        {
+            if (products == null || products.Count == 0)
+                return "no products configured";
+
+            return string.Join(" | ", products.Select(p => $"{p.id}: {DescribeOwnership(p.id)}"));
         }
 
         public void CheckEntitlement(string productId)
@@ -1110,6 +1162,7 @@ namespace Wagenheimer.IAPHelper
             var callerOnComplete = onComplete;
             onComplete = (success, error) =>
             {
+                Debug.Log($"[IAPHelper] Restore finished: success={success}, error={error ?? "none"} | {OwnershipSummary()}");
                 Raise(nameof(IAPGlobalEvents.onRestoreCompleted), () => globalEvents.onRestoreCompleted?.Invoke(success));
                 callerOnComplete?.Invoke(success, error);
             };
@@ -1135,9 +1188,54 @@ namespace Wagenheimer.IAPHelper
             }
             else
             {
-                FetchPurchases();
-                onComplete?.Invoke(true, null);
+                RestoreByFetchingPurchases(onComplete);
             }
+        }
+
+        private const float RestoreFetchTimeoutSeconds = 15f;
+
+        /// <summary>
+        /// Non-Apple restore: fetch the owned purchases and report only once the store answered. Reporting
+        /// right after calling <see cref="FetchPurchases"/> (which is asynchronous) made callers check
+        /// <see cref="HasPurchased"/> before the orders existed, reading a real purchase as "none found".
+        /// </summary>
+        private void RestoreByFetchingPurchases(Action<bool, string> onComplete)
+        {
+            if (!IsConnected)
+            {
+                onComplete(false, "Store not connected");
+                return;
+            }
+
+            bool finished = false;
+            Action<Orders> onFetched = null;
+            Action<string> onFetchFailed = null;
+
+            void Finish(bool success, string error)
+            {
+                if (finished)
+                    return;
+
+                finished = true;
+                OnPurchasesFetched -= onFetched;
+                OnPurchasesFetchFailed -= onFetchFailed;
+                onComplete(success, error);
+            }
+
+            onFetched = _ => Finish(true, null);
+            onFetchFailed = message => Finish(false, message);
+
+            OnPurchasesFetched += onFetched;
+            OnPurchasesFetchFailed += onFetchFailed;
+
+            FetchPurchases();
+            StartCoroutine(RestoreFetchTimeout(() => Finish(false, "Timed out waiting for the store to return purchases")));
+        }
+
+        private IEnumerator RestoreFetchTimeout(Action onTimeout)
+        {
+            yield return new WaitForSecondsRealtime(RestoreFetchTimeoutSeconds);
+            onTimeout();
         }
 
         /// <summary>

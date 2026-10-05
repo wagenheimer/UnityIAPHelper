@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-10-05
+
+### Added
+- `IAPLog`: a persistent log of everything IAP-related, kept from app start (800 entries). It captures every `[IAP...` Unity log line automatically and is written to directly by `BaseIAPForm`. `IAPLog.ToText()`, `SaveToFile()` (persistentDataPath/iap-log.txt) and an optional `IAPLog.ShareHandler` for native sharing.
+- Debug overlay "IAP Log" card now shows the whole log (150 newest lines, selectable) with Copy, Save, Share (when a handler is set), Errors-only filter and Clear. "Copy Diagnostics Report" now includes the log.
+- Detailed logging of the decisions behind a purchase: the store id each product maps to (and which store branch the build compiled), why `HasPurchased` is true or false (`DescribeOwnership`: store order, PlayerPrefs key or `HasPurchasedFallback`), the product and store id being purchased, how every translation was resolved, and whether an error reached the popup hook or only the console.
+
+### Fixed
+- Fixed UI Toolkit debug overlay rendering broken square glyphs (`□`) for close, maximize, and action buttons by replacing unicode emojis/symbols with standard ASCII text.
+- Restore on Android/Amazon/Editor reported success before the store answered: `FetchPurchases()` is asynchronous, so `BaseIAPForm` checked `HasPurchased` too early and showed "no previous purchase found" even for a purchase the store owned. Restore now waits for the fetch result (15 s timeout) before completing.
+
 ## [1.13.1] - 2026-09-26
 
 ### Fixed

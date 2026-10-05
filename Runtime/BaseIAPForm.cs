@@ -61,14 +61,14 @@ namespace Wagenheimer.IAPHelper
         {
             try
             {
-                Debug.Log($"[{GetType().Name}] Initializing form...");
+                IAPLog.Info($"[{GetType().Name}] Initializing form...");
 
                 ConfigureRestoreButton();
                 await InitializeIAPAndLoadPrice();
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[{GetType().Name}] Error in OnEnable: {ex.Message}\n{ex.StackTrace}");
+                IAPLog.Error($"[{GetType().Name}] Error in OnEnable: {ex.Message}\n{ex.StackTrace}");
                 ShowError(Translate("error"));
             }
         }
@@ -89,7 +89,7 @@ namespace Wagenheimer.IAPHelper
 
             if (_iapHelper == null)
             {
-                Debug.LogError($"[{GetType().Name}] IAPHelper not found!");
+                IAPLog.Error($"[{GetType().Name}] IAPHelper not found!");
                 SetPriceText(Translate("iapnotready"));
                 return;
             }
@@ -114,14 +114,14 @@ namespace Wagenheimer.IAPHelper
 
             if (_iapHelper.HasPurchased(productId))
             {
-                Debug.Log($"[{GetType().Name}] Product already owned: {productId}");
+                IAPLog.Info($"[{GetType().Name}] Product already owned: {productId}");
                 SetPriceText(Translate("purchased"));
                 OnProductAlreadyOwned();
                 return;
             }
 
             SetPriceText(!string.IsNullOrEmpty(price) ? price : (product?.metadata?.localizedPriceString ?? ""));
-            Debug.Log($"[{GetType().Name}] Product: {productId} - Price: {price}");
+            IAPLog.Info($"[{GetType().Name}] Product: {productId} - Price: {price}");
         }
 
         protected virtual void ConfigureRestoreButton()
@@ -143,7 +143,7 @@ namespace Wagenheimer.IAPHelper
 
         protected virtual void OnProductAlreadyOwned()
         {
-            Debug.Log($"[{GetType().Name}] Product already owned by the user.");
+            IAPLog.Info($"[{GetType().Name}] Product already owned by the user.");
         }
 
         #endregion
@@ -154,7 +154,7 @@ namespace Wagenheimer.IAPHelper
         {
             if (_isPurchasing)
             {
-                Debug.LogWarning($"[{GetType().Name}] Purchase already in progress.");
+                IAPLog.Warning($"[{GetType().Name}] Purchase already in progress.");
                 return;
             }
 
@@ -163,14 +163,14 @@ namespace Wagenheimer.IAPHelper
 
             if (!ready)
             {
-                Debug.LogError($"[{GetType().Name}] IAP not initialized.");
+                IAPLog.Error($"[{GetType().Name}] IAP not initialized.");
                 ShowError(Translate("iapnotready"));
                 return;
             }
 
             try
             {
-                Debug.Log($"[{GetType().Name}] Starting purchase: {productId}");
+                IAPLog.Info($"[{GetType().Name}] Starting purchase: {productId}");
 
                 _isPurchasing = true;
                 ShowPleaseWait();
@@ -190,7 +190,7 @@ namespace Wagenheimer.IAPHelper
 
                 if (result.FailureReason == PurchaseFailureReason.UserCancelled)
                 {
-                    Debug.Log($"[{GetType().Name}] User cancelled the purchase.");
+                    IAPLog.Info($"[{GetType().Name}] User cancelled the purchase.");
                     return;
                 }
 
@@ -199,7 +199,7 @@ namespace Wagenheimer.IAPHelper
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[{GetType().Name}] Error while purchasing: {ex.Message}");
+                IAPLog.Error($"[{GetType().Name}] Error while purchasing: {ex.Message}");
                 _isPurchasing = false;
                 HidePleaseWait();
                 ShowError(Translate("purchasefailed"));
@@ -210,7 +210,7 @@ namespace Wagenheimer.IAPHelper
 
         protected virtual void OnPurchaseSuccess()
         {
-            Debug.Log($"[{GetType().Name}] Purchase completed successfully!");
+            IAPLog.Info($"[{GetType().Name}] Purchase completed successfully!");
         }
 
         /// <summary>
@@ -221,7 +221,7 @@ namespace Wagenheimer.IAPHelper
         /// </summary>
         protected virtual void OnRestoreSuccess()
         {
-            Debug.Log($"[{GetType().Name}] Purchase restored successfully!");
+            IAPLog.Info($"[{GetType().Name}] Purchase restored successfully!");
         }
 
         #endregion
@@ -232,7 +232,7 @@ namespace Wagenheimer.IAPHelper
         {
             if (_isPurchasing)
             {
-                Debug.LogWarning($"[{GetType().Name}] Operation already in progress.");
+                IAPLog.Warning($"[{GetType().Name}] Operation already in progress.");
                 return;
             }
 
@@ -277,7 +277,7 @@ namespace Wagenheimer.IAPHelper
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[{GetType().Name}] Error while restoring: {ex.Message}");
+                IAPLog.Error($"[{GetType().Name}] Error while restoring: {ex.Message}");
                 _isPurchasing = false;
                 HidePleaseWait();
                 ShowError(Translate("restorefailed"));
@@ -343,18 +343,19 @@ namespace Wagenheimer.IAPHelper
 
         protected virtual void ShowSuccess(string message)
         {
-            Debug.Log($"[{GetType().Name}] SUCCESS: {message}");
+            IAPLog.Info($"[{GetType().Name}] SUCCESS: {message}");
         }
 
         protected virtual void ShowError(string message)
         {
             if (OnShowErrorNotification != null)
             {
+                IAPLog.Error($"[{GetType().Name}] ERROR shown to the player via popup hook: {message}");
                 OnShowErrorNotification.Invoke(message);
             }
             else
             {
-                Debug.LogError($"[{GetType().Name}] ERROR: {message}");
+                IAPLog.Error($"[{GetType().Name}] ERROR (console only, OnShowErrorNotification is not set): {message}");
             }
         }
 
@@ -366,9 +367,27 @@ namespace Wagenheimer.IAPHelper
         {
             if (LocalizationResolver != null)
             {
-                var custom = LocalizationResolver(key);
+                string custom = null;
+                try
+                {
+                    custom = LocalizationResolver(key);
+                }
+                catch (Exception ex)
+                {
+                    IAPLog.Error($"[BaseIAPForm] LocalizationResolver threw for '{key}': {ex.Message}");
+                }
+
                 if (!string.IsNullOrEmpty(custom))
+                {
+                    IAPLog.Info($"[BaseIAPForm] Translate('{key}') = '{custom}' (via LocalizationResolver)");
                     return custom;
+                }
+
+                IAPLog.Warning($"[BaseIAPForm] LocalizationResolver returned nothing for '{key}', trying I2 reflection.");
+            }
+            else
+            {
+                IAPLog.Info($"[BaseIAPForm] LocalizationResolver is not set; trying I2 reflection for '{key}'.");
             }
 
             try
@@ -390,12 +409,29 @@ namespace Wagenheimer.IAPHelper
 
                         var res = method.Invoke(null, BindingFlags.Default, null, args, null) as string;
                         if (!string.IsNullOrEmpty(res))
+                        {
+                            IAPLog.Info($"[BaseIAPForm] Translate('{key}') = '{res}' (via I2 reflection)");
                             return res;
+                        }
+
+                        IAPLog.Warning($"[BaseIAPForm] I2 returned an empty translation for '{key}'.");
+                    }
+                    else
+                    {
+                        IAPLog.Warning("[BaseIAPForm] I2 LocalizationManager found, but no GetTranslation/GetTermTranslation(string, ...) method.");
                     }
                 }
+                else
+                {
+                    IAPLog.Warning("[BaseIAPForm] I2 LocalizationManager type not found in Assembly-CSharp (it may live in another assembly): set BaseIAPForm.LocalizationResolver.");
+                }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                IAPLog.Error($"[BaseIAPForm] I2 reflection failed for '{key}': {ex.Message}");
+            }
 
+            IAPLog.Warning($"[BaseIAPForm] No translation for '{key}': showing the raw key.");
             return key;
         }
 

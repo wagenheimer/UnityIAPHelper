@@ -68,8 +68,11 @@ namespace Wagenheimer.IAPHelper.UI
         private float _lastRefreshTime;
         private const float RefreshInterval = 0.4f;
 
-        private readonly List<(string text, Color color)> _eventLog = new List<(string, Color)>();
-        private const int MaxLogLines = 16;
+        // The log itself lives in IAPLog (kept from app start); the overlay only renders the newest lines.
+        private const int MaxLogLines = 150;
+        private volatile bool _logDirty;
+        private bool _errorsOnly;
+        private Label _logStatusLabel;
 
         // Window drag state
         private bool _isDragging;
@@ -111,6 +114,8 @@ namespace Wagenheimer.IAPHelper.UI
 
         private void OnEnable()
         {
+            IAPLog.OnEntryAdded += OnLogEntry;
+
             if (IAPHelper.Instance != null)
             {
                 IAPHelper.Instance.OnEntitlementGranted += OnGranted;
@@ -122,6 +127,8 @@ namespace Wagenheimer.IAPHelper.UI
 
         private void OnDisable()
         {
+            IAPLog.OnEntryAdded -= OnLogEntry;
+
             if (IAPHelper.Instance != null)
             {
                 IAPHelper.Instance.OnEntitlementGranted -= OnGranted;
@@ -136,6 +143,12 @@ namespace Wagenheimer.IAPHelper.UI
             if (Input.GetKeyDown(toggleKey))
             {
                 SetOpen(!_isOpen);
+            }
+
+            if (_logDirty && _isOpen)
+            {
+                _logDirty = false;
+                RefreshEventLog();
             }
 
             if (_isOpen && Time.unscaledTime - _lastRefreshTime >= RefreshInterval)
@@ -154,14 +167,12 @@ namespace Wagenheimer.IAPHelper.UI
         private void OnRestored(Orders _)     => Log("FETCH PURCHASES completed", ColorAccentCyan);
         private void OnConnFailed(string msg) => Log($"CONN FAILED: {msg}", ColorAccentRed);
 
+        // IAPLog can be written from any thread: only flag the UI to refresh on the main thread.
+        private void OnLogEntry(IAPLogEntry _) => _logDirty = true;
+
         private void Log(string msg, Color color)
         {
-            _eventLog.Insert(0, ($"[{DateTime.Now:HH:mm:ss}] {msg}", color));
-            if (_eventLog.Count > MaxLogLines)
-            {
-                _eventLog.RemoveAt(_eventLog.Count - 1);
-            }
-            RefreshEventLog();
+            IAPLog.Info($"[IAPDebugOverlay] {msg}");
         }
 
         #endregion
@@ -319,7 +330,7 @@ namespace Wagenheimer.IAPHelper.UI
             _floatingDot.style.marginRight = 6;
             _floatingBtn.Add(_floatingDot);
 
-            var label = new Label("🛒 IAP DBG");
+            var label = new Label("IAP DBG");
             label.style.color = new StyleColor(Color.white);
             label.style.fontSize = 11.5f;
             label.style.unityFontStyleAndWeight = FontStyle.Bold;
@@ -440,7 +451,7 @@ namespace Wagenheimer.IAPHelper.UI
             titleRow.style.flexDirection = FlexDirection.Row;
             titleRow.style.alignItems = Align.Center;
 
-            var titleLbl = new Label("🛒 IAP Helper Debug");
+            var titleLbl = new Label("IAP Helper Debug");
             titleLbl.style.fontSize = 13;
             titleLbl.style.color = new StyleColor(Color.white);
             titleLbl.style.unityFontStyleAndWeight = FontStyle.Bold;
@@ -475,11 +486,11 @@ namespace Wagenheimer.IAPHelper.UI
             maxBtn.style.marginRight = 4;
             actions.Add(maxBtn);
 
-            var minBtn = CreateSmallButton("—", () => SetOpen(false));
+            var minBtn = CreateSmallButton("-", () => SetOpen(false));
             minBtn.style.marginRight = 4;
             actions.Add(minBtn);
 
-            var closeBtn = CreateSmallButton("✕", () => SetOpen(false));
+            var closeBtn = CreateSmallButton("X", () => SetOpen(false));
             actions.Add(closeBtn);
 
             header.Add(actions);
@@ -532,7 +543,7 @@ namespace Wagenheimer.IAPHelper.UI
             badgesRow.style.flexDirection = FlexDirection.Row;
             badgesRow.style.marginBottom = 6;
 
-            var connPill = CreatePill(connected ? "● CONNECTED" : "● DISCONNECTED", connected ? ColorAccentGreen : ColorAccentAmber, Color.white);
+            var connPill = CreatePill(connected ? "CONNECTED" : "DISCONNECTED", connected ? ColorAccentGreen : ColorAccentAmber, Color.white);
             connPill.style.marginRight = 6;
             badgesRow.Add(connPill);
 
@@ -559,7 +570,7 @@ namespace Wagenheimer.IAPHelper.UI
             btnRow.style.flexDirection = FlexDirection.Row;
             btnRow.style.marginBottom = 6;
 
-            var initBtn = CreateButton("⟳ Force Init", new Color(0.20f, 0.42f, 0.65f), Color.white, () =>
+            var initBtn = CreateButton("Force Init", new Color(0.20f, 0.42f, 0.65f), Color.white, () =>
             {
                 var h = IAPHelper.Instance;
                 if (h != null)
@@ -572,7 +583,7 @@ namespace Wagenheimer.IAPHelper.UI
             initBtn.style.marginRight = 4;
             btnRow.Add(initBtn);
 
-            var restoreBtn = CreateButton("⇩ Restore All", new Color(0.22f, 0.28f, 0.48f), Color.white, () =>
+            var restoreBtn = CreateButton("Restore All", new Color(0.22f, 0.28f, 0.48f), Color.white, () =>
             {
                 var h = IAPHelper.Instance;
                 if (h != null)
@@ -585,7 +596,7 @@ namespace Wagenheimer.IAPHelper.UI
             restoreBtn.style.marginRight = 4;
             btnRow.Add(restoreBtn);
 
-            var clearPrefsBtn = CreateButton("🗑 Clear Keys", new Color(0.60f, 0.35f, 0.15f), Color.white, () =>
+            var clearPrefsBtn = CreateButton("Clear Keys", new Color(0.60f, 0.35f, 0.15f), Color.white, () =>
             {
                 var h = IAPHelper.Instance;
                 if (h != null)
@@ -600,7 +611,7 @@ namespace Wagenheimer.IAPHelper.UI
 
             card.Add(btnRow);
 
-            var copyReportBtn = CreateButton("📋 Copy Diagnostics Report", new Color(0.20f, 0.21f, 0.26f), Color.white, () =>
+            var copyReportBtn = CreateButton("Copy Diagnostics Report", new Color(0.20f, 0.21f, 0.26f), Color.white, () =>
             {
                 string rep = GenerateReport();
                 GUIUtility.systemCopyBuffer = rep;
@@ -706,7 +717,7 @@ namespace Wagenheimer.IAPHelper.UI
             box.Add(headerRow);
 
             // Sub info
-            var subInfo = new Label($"Store: {(isOwned && !prefOwned && !fallbackOwned ? "✓" : "—")}  |  Prefs: {(prefOwned ? "✓" : "—")}  |  Fallback: {(fallbackOwned ? "✓" : "—")}");
+            var subInfo = new Label($"Store: {(isOwned && !prefOwned && !fallbackOwned ? "YES" : "-")}  |  Prefs: {(prefOwned ? "YES" : "-")}  |  Fallback: {(fallbackOwned ? "YES" : "-")}");
             subInfo.style.fontSize = 10;
             subInfo.style.color = new StyleColor(new Color(0.55f, 0.58f, 0.65f));
             subInfo.style.marginTop = 2;
@@ -717,7 +728,7 @@ namespace Wagenheimer.IAPHelper.UI
             var actionsRow = new VisualElement();
             actionsRow.style.flexDirection = FlexDirection.Row;
 
-            var grantBtn = CreateButton("✓ Simulate Grant", new Color(0.18f, 0.52f, 0.30f), Color.white, () =>
+            var grantBtn = CreateButton("Simulate Grant", new Color(0.18f, 0.52f, 0.30f), Color.white, () =>
             {
                 if (!string.IsNullOrEmpty(product.playerPrefsFallbackKey))
                 {
@@ -734,7 +745,7 @@ namespace Wagenheimer.IAPHelper.UI
 
             if (product.type == ProductType.NonConsumable)
             {
-                var revokeBtn = CreateButton("✕ Revoke", new Color(0.55f, 0.20f, 0.20f), Color.white, () =>
+                var revokeBtn = CreateButton("Revoke", new Color(0.55f, 0.20f, 0.20f), Color.white, () =>
                 {
                     helper.DebugRevokeEntitlement(product.id);
                     Log($"Revoked: {product.id}", ColorAccentRed);
@@ -744,7 +755,7 @@ namespace Wagenheimer.IAPHelper.UI
                 revokeBtn.style.marginRight = 4;
                 actionsRow.Add(revokeBtn);
 
-                var restoreLoopBtn = CreateButton("↻ Revoke & Restore", new Color(0.55f, 0.35f, 0.15f), Color.white, () =>
+                var restoreLoopBtn = CreateButton("Revoke & Restore", new Color(0.55f, 0.35f, 0.15f), Color.white, () =>
                 {
                     helper.DebugResetAndRestore(product.id);
                     Log($"Revoke & Restore triggered: {product.id}", ColorAccentOrange);
@@ -755,7 +766,7 @@ namespace Wagenheimer.IAPHelper.UI
                 actionsRow.Add(restoreLoopBtn);
             }
 
-            var buyBtn = CreateButton("💳 Buy", new Color(0.18f, 0.38f, 0.65f), Color.white, () =>
+            var buyBtn = CreateButton("Buy", new Color(0.18f, 0.38f, 0.65f), Color.white, () =>
             {
                 helper.Purchase(product.id);
                 Log($"Purchase initiated: {product.id}", ColorAccentCyan);
@@ -769,26 +780,49 @@ namespace Wagenheimer.IAPHelper.UI
 
         private VisualElement BuildEventLogSection()
         {
-            var card = CreateCard("Real-Time Event Log");
+            var card = CreateCard("IAP Log");
 
-            var headerRow = new VisualElement();
-            headerRow.style.flexDirection = FlexDirection.Row;
-            headerRow.style.justifyContent = Justify.SpaceBetween;
-            headerRow.style.alignItems = Align.Center;
-            headerRow.style.marginBottom = 6;
-
-            var titleLbl = new Label("Captured Purchases & Callbacks");
+            var titleLbl = new Label("Everything IAP-related since app start (newest first)");
             titleLbl.style.fontSize = 11;
             titleLbl.style.color = new StyleColor(ColorTextMuted);
-            headerRow.Add(titleLbl);
+            titleLbl.style.whiteSpace = WhiteSpace.Normal;
+            titleLbl.style.marginBottom = 6;
+            card.Add(titleLbl);
 
-            var clearBtn = CreateSmallButton("Clear", () =>
+            var buttonRow = new VisualElement();
+            buttonRow.style.flexDirection = FlexDirection.Row;
+            buttonRow.style.flexWrap = Wrap.Wrap;
+            buttonRow.style.alignItems = Align.Center;
+            buttonRow.style.marginBottom = 6;
+
+            buttonRow.Add(CreateTextButton("Copy", CopyLog));
+            buttonRow.Add(CreateTextButton("Save", SaveLog));
+
+            if (IAPLog.ShareHandler != null)
+                buttonRow.Add(CreateTextButton("Share", ShareLog));
+
+            var errorsBtn = CreateTextButton("Errors only: off", null);
+            errorsBtn.clicked += () =>
             {
-                _eventLog.Clear();
+                _errorsOnly = !_errorsOnly;
+                errorsBtn.text = _errorsOnly ? "Errors only: on" : "Errors only: off";
                 RefreshEventLog();
-            });
-            headerRow.Add(clearBtn);
-            card.Add(headerRow);
+            };
+            buttonRow.Add(errorsBtn);
+
+            buttonRow.Add(CreateTextButton("Clear", () =>
+            {
+                IAPLog.Clear();
+                RefreshEventLog();
+            }));
+            card.Add(buttonRow);
+
+            _logStatusLabel = new Label();
+            _logStatusLabel.style.fontSize = 10;
+            _logStatusLabel.style.color = new StyleColor(ColorAccentCyan);
+            _logStatusLabel.style.whiteSpace = WhiteSpace.Normal;
+            _logStatusLabel.style.marginBottom = 4;
+            card.Add(_logStatusLabel);
 
             _eventLogContainer = new VisualElement();
             _eventLogContainer.style.backgroundColor = new StyleColor(new Color(0.06f, 0.06f, 0.08f));
@@ -849,22 +883,69 @@ namespace Wagenheimer.IAPHelper.UI
             if (_eventLogContainer == null) return;
             _eventLogContainer.Clear();
 
-            if (_eventLog.Count == 0)
+            var entries = IAPLog.Snapshot();
+            int shown = 0;
+
+            for (int i = entries.Count - 1; i >= 0 && shown < MaxLogLines; i--)
             {
-                var empty = new Label("No events yet.");
+                var entry = entries[i];
+                if (_errorsOnly && entry.Level != IAPLogLevel.Error)
+                    continue;
+
+                var lbl = new Label($"{entry.Time:HH:mm:ss.fff} {entry.Message}");
+                lbl.style.fontSize = 10.5f;
+                lbl.style.color = new StyleColor(ColorForLevel(entry.Level));
+                lbl.style.whiteSpace = WhiteSpace.Normal;
+                lbl.style.marginBottom = 2;
+                lbl.selection.isSelectable = true;
+                _eventLogContainer.Add(lbl);
+                shown++;
+            }
+
+            if (shown == 0)
+            {
+                var empty = new Label(_errorsOnly ? "No errors." : "No events yet.");
                 empty.style.fontSize = 10.5f;
                 empty.style.color = new StyleColor(new Color(0.5f, 0.5f, 0.55f));
                 _eventLogContainer.Add(empty);
-                return;
             }
+        }
 
-            foreach (var (text, color) in _eventLog)
+        private static Color ColorForLevel(IAPLogLevel level) => level switch
+        {
+            IAPLogLevel.Error => ColorAccentRed,
+            IAPLogLevel.Warning => ColorAccentAmber,
+            _ => new Color(0.82f, 0.84f, 0.90f)
+        };
+
+        private void SetLogStatus(string text)
+        {
+            if (_logStatusLabel != null)
+                _logStatusLabel.text = text;
+        }
+
+        private void CopyLog()
+        {
+            GUIUtility.systemCopyBuffer = IAPLog.ToText();
+            SetLogStatus($"Copied {IAPLog.Count} log entries to the clipboard.");
+        }
+
+        private void SaveLog()
+        {
+            var path = IAPLog.SaveToFile();
+            SetLogStatus(path != null ? $"Saved to: {path}" : "Could not save the log file (see the console).");
+        }
+
+        private void ShareLog()
+        {
+            try
             {
-                var lbl = new Label(text);
-                lbl.style.fontSize = 10.5f;
-                lbl.style.color = new StyleColor(color);
-                lbl.style.marginBottom = 2;
-                _eventLogContainer.Add(lbl);
+                IAPLog.ShareHandler?.Invoke(IAPLog.ToText());
+                SetLogStatus("Log sent to the share handler.");
+            }
+            catch (Exception ex)
+            {
+                SetLogStatus($"Share failed: {ex.Message}");
             }
         }
 
@@ -988,6 +1069,18 @@ namespace Wagenheimer.IAPHelper.UI
             return btn;
         }
 
+        /// <summary>Compact button that sizes to its text (CreateSmallButton is a fixed 22x22 icon button).</summary>
+        private Button CreateTextButton(string text, Action onClick)
+        {
+            var btn = CreateSmallButton(text, onClick);
+            btn.style.width = StyleKeyword.Auto;
+            btn.style.paddingLeft = 8;
+            btn.style.paddingRight = 8;
+            btn.style.marginRight = 6;
+            btn.style.marginBottom = 4;
+            return btn;
+        }
+
         private VisualElement CreatePill(string text, Color bg, Color textCol)
         {
             var pill = new VisualElement();
@@ -1043,6 +1136,8 @@ namespace Wagenheimer.IAPHelper.UI
                 }
             }
             sb.AppendLine("===========================================");
+            sb.AppendLine();
+            sb.Append(IAPLog.ToText());
             return sb.ToString();
         }
 
