@@ -63,6 +63,8 @@ namespace Wagenheimer.IAPHelper.Editor
             headerCard.Add(topRow);
             Root.Add(headerCard);
 
+            AddLocalizationCard();
+
             var groups = StoreChecklistItems.GroupBy(i => i.Category);
 
             foreach (var group in groups)
@@ -114,6 +116,64 @@ namespace Wagenheimer.IAPHelper.Editor
             }
 
             UpdateProgress();
+        }
+
+        /// <summary>
+        /// Verifies every IAPHelper translation key exists in the project's I2 Localization source and
+        /// offers a one-click button to create the missing ones (seeded in English).
+        /// </summary>
+        private void AddLocalizationCard()
+        {
+            var card = IAPHelperUIStyle.CreateCard("🌐 Localization Terms",
+                "Every message IAPHelper shows the player is looked up in I2 Localization by the keys below. A missing key is shown to the player as the raw key (e.g. \"purchasefailed\").");
+
+            if (!IAPLocalization.IsAvailable)
+            {
+                var warn = new Label("I2 Localization was not found in this project. Install it (and set BaseIAPForm.LocalizationResolver) to drive these texts from localization.");
+                warn.style.whiteSpace = WhiteSpace.Normal;
+                warn.style.color = new Color(0.95f, 0.72f, 0.20f);
+                card.Add(warn);
+                foreach (var t in IAPLocalization.Terms)
+                    card.Add(TermRow(t.Key, false));
+                Root.Add(card);
+                return;
+            }
+
+            var missing = IAPLocalization.MissingKeys();
+            foreach (var t in IAPLocalization.Terms)
+                card.Add(TermRow(t.Key, !missing.Contains(t.Key)));
+
+            var createBtn = new Button(() =>
+            {
+                var created = IAPLocalization.CreateMissingTerms();
+                EditorUtility.DisplayDialog("IAP Localization",
+                    created.Count > 0
+                        ? $"Created {created.Count} term(s): {string.Join(", ", created)}.\nThey were seeded with English text - translate the other languages in the I2 window."
+                        : "Nothing to create: every IAPHelper term already exists.",
+                    "OK");
+                Root.Clear();
+                BuildUI();
+            });
+            createBtn.text = missing.Count > 0 ? $"Create {missing.Count} missing term(s) in I2" : "All terms present";
+            createBtn.SetEnabled(missing.Count > 0);
+            createBtn.style.marginTop = 6;
+            card.Add(createBtn);
+
+            Root.Add(card);
+        }
+
+        private static VisualElement TermRow(string key, bool ok)
+        {
+            var row = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, marginBottom = 2 } };
+            var badge = new Label(ok ? "✔" : "✘");
+            badge.style.width = 18;
+            badge.style.color = ok ? new Color(0.35f, 0.85f, 0.45f) : new Color(0.95f, 0.32f, 0.30f);
+            row.Add(badge);
+            var lbl = new Label(key);
+            lbl.style.fontSize = 11;
+            lbl.style.color = ok ? new Color(0.80f, 0.82f, 0.86f) : new Color(0.95f, 0.72f, 0.20f);
+            row.Add(lbl);
+            return row;
         }
 
         private void UpdateProgress()

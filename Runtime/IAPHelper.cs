@@ -53,6 +53,9 @@ namespace Wagenheimer.IAPHelper
         private float _lastResumeFetchTime = float.NegativeInfinity;
         private const float ResumeFetchCooldownSeconds = 5f;
 
+        /// <summary>Set on an auth-account change so the next successful fetch reconciles (revokes) entitlements the new account no longer owns.</summary>
+        private bool _reconcileOnNextFetch;
+
         #endregion
 
         #region Configuration
@@ -103,6 +106,9 @@ namespace Wagenheimer.IAPHelper
 
         public bool processPendingOnFetch = true;
         public bool logPurchasesFetchFailures = false;
+
+        [Tooltip("When enabled, every successful purchase fetch revokes any entitlement the store no longer reports as owned (e.g. Google Play refunds). Off by default because a transient/empty fetch during a flaky connection could revoke a real purchase.")]
+        public bool reconcileEntitlementsOnFetch = false;
 
         [Tooltip("Automatically attaches the in-game IAPDebugOverlay in Editor and Development Builds. No manual scene setup or code required.")]
         public bool enableDebugOverlay = true;
@@ -223,23 +229,38 @@ namespace Wagenheimer.IAPHelper
             var tcs = new TaskCompletionSource<bool>();
             Action onInit = null;
             Action<string> onFail = null;
+            Action<string> onProductsFail = null;
 
-            onInit = () =>
+            void Unsubscribe()
             {
                 OnInitialized -= onInit;
                 OnConnectionFailed -= onFail;
+                OnProductsFetchFailed -= onProductsFail;
+            }
+
+            onInit = () =>
+            {
+                Unsubscribe();
                 tcs.TrySetResult(true);
             };
 
             onFail = _ =>
             {
-                OnInitialized -= onInit;
-                OnConnectionFailed -= onFail;
+                Unsubscribe();
+                tcs.TrySetResult(false);
+            };
+
+            // A failed product fetch means the store will never be ready for purchases; resolve
+            // immediately instead of waiting for the full timeout.
+            onProductsFail = _ =>
+            {
+                Unsubscribe();
                 tcs.TrySetResult(false);
             };
 
             OnInitialized += onInit;
             OnConnectionFailed += onFail;
+            OnProductsFetchFailed += onProductsFail;
 
             Initialize();
 
@@ -247,8 +268,7 @@ namespace Wagenheimer.IAPHelper
             using (cts.Token.Register(() => tcs.TrySetResult(false)))
             {
                 var result = await tcs.Task.ConfigureAwait(false);
-                OnInitialized -= onInit;
-                OnConnectionFailed -= onFail;
+                Unsubscribe();
                 return result;
             }
         }
@@ -419,7 +439,8 @@ namespace Wagenheimer.IAPHelper
 
         private void HandleAuthAccountChanged()
         {
-            Debug.Log("[IAPHelper] Auth account changed. Re-fetching catalog...");
+            Debug.Log("[IAPHelper] Auth account changed. Re-fetching catalog and reconciling entitlements...");
+            _reconcileOnNextFetch = true;
             FetchProducts();
             FetchPurchases();
         }
@@ -561,8 +582,42 @@ namespace Wagenheimer.IAPHelper
                 }
             }
 
+            // Account changed (or reconcileEntitlementsOnFetch is on): revoke anything the store no
+            // longer reports as owned so a switched account / refund doesn't keep the content unlocked.
+            if (_reconcileOnNextFetch || reconcileEntitlementsOnFetch)
+            {
+                _reconcileOnNextFetch = false;
+                ReconcileEntitlements(orders);
+            }
+
             OnPurchasesFetched?.Invoke(orders);
             Raise(nameof(IAPGlobalEvents.onPurchasesFetched), () => globalEvents.onPurchasesFetched?.Invoke());
+        }
+
+        /// <summary>
+        /// Revokes every product granted this session that the authoritative fetch no longer reports as
+        /// owned. Used on an auth-account change (always) and, opt-in via
+        /// <see cref="reconcileEntitlementsOnFetch"/>, on every fetch to catch refunds (e.g. Google Play,
+        /// which has no store-side revocation event).
+        /// </summary>
+        private void ReconcileEntitlements(Orders orders)
+        {
+            if (orders == null) return;
+
+            var owned = new HashSet<string>();
+            if (orders.ConfirmedOrders != null)
+            {
+                foreach (var order in orders.ConfirmedOrders)
+                    owned.Add(GetOrderProductId(order));
+            }
+
+            // Snapshot the ids first: RevokeEntitlement mutates _grantedProductIds while we iterate.
+            foreach (var productId in _grantedProductIds.ToList())
+            {
+                if (string.IsNullOrEmpty(productId) || owned.Contains(productId)) continue;
+                Debug.Log($"[IAPHelper] '{productId}' is no longer owned by the store account - revoking entitlement.");
+                RevokeEntitlement(productId);
+            }
         }
 
         private void HandlePurchasesFetchFailed(PurchasesFetchFailureDescription failure)
@@ -665,13 +720,29 @@ namespace Wagenheimer.IAPHelper
                     }
                     else if (order is FailedOrder failedOrder)
                     {
-                        tcs.TrySetResult(new PurchaseResult
+                        // A DuplicateTransaction means the store already confirmed this order; the player
+                        // owns it, so resolve the purchase as an already-owned success.
+                        if (IsAlreadyOwnedFailure(failedOrder))
                         {
-                            IsSuccess = false,
-                            ProductId = productId,
-                            FailureReason = PurchaseFailureReason.Unknown,
-                            ErrorMessage = failedOrder.Details
-                        });
+                            tcs.TrySetResult(new PurchaseResult
+                            {
+                                IsSuccess = true,
+                                IsAlreadyOwned = true,
+                                ProductId = productId,
+                                FailureReason = failedOrder.FailureReason,
+                                ErrorMessage = failedOrder.Details
+                            });
+                        }
+                        else
+                        {
+                            tcs.TrySetResult(new PurchaseResult
+                            {
+                                IsSuccess = false,
+                                ProductId = productId,
+                                FailureReason = failedOrder.FailureReason,
+                                ErrorMessage = failedOrder.Details
+                            });
+                        }
                     }
                 }
             };
@@ -819,8 +890,19 @@ namespace Wagenheimer.IAPHelper
             }
             else if (order is FailedOrder failed)
             {
-                Debug.LogError($"[IAPHelper] Purchase confirmation failed for: {productId} - {failed.Details}");
-                Raise(nameof(IAPGlobalEvents.onPurchaseFailed), () => globalEvents.onPurchaseFailed?.Invoke($"{failed.Details}"));
+                if (IsAlreadyOwnedFailure(failed))
+                {
+                    // The store already completed and confirmed this order (e.g. a re-confirm during
+                    // restore/relaunch). That is ownership, not a failure - grant and report success.
+                    Debug.Log($"[IAPHelper] Purchase already confirmed for '{productId}' (DuplicateTransaction) - treating as success.");
+                    GrantEntitlementIfNeeded(productId);
+                    Raise(nameof(IAPGlobalEvents.onPurchaseSuccess), () => globalEvents.onPurchaseSuccess?.Invoke(productId));
+                }
+                else
+                {
+                    Debug.LogError($"[IAPHelper] Purchase confirmation failed for: {productId} - {failed.Details}");
+                    Raise(nameof(IAPGlobalEvents.onPurchaseFailed), () => globalEvents.onPurchaseFailed?.Invoke($"{failed.Details}"));
+                }
             }
 
             OnPurchaseConfirmed?.Invoke(order);
@@ -828,6 +910,18 @@ namespace Wagenheimer.IAPHelper
 
         private void HandlePurchaseFailed(FailedOrder failedOrder)
         {
+            if (IsAlreadyOwnedFailure(failedOrder))
+            {
+                // DuplicateTransaction ("Purchase has already been confirmed.") means the player already
+                // owns the product. Grant the entitlement and report success instead of surfacing an error.
+                var ownedProductId = GetOrderProductId(failedOrder);
+                Debug.Log($"[IAPHelper] Purchase already confirmed for '{ownedProductId}' (DuplicateTransaction) - treating as already owned.");
+                GrantEntitlementIfNeeded(ownedProductId);
+                OnPurchaseConfirmed?.Invoke(failedOrder);
+                Raise(nameof(IAPGlobalEvents.onPurchaseSuccess), () => globalEvents.onPurchaseSuccess?.Invoke(ownedProductId));
+                return;
+            }
+
             Debug.LogError($"[IAPHelper] Purchase failed: {failedOrder.FailureReason} - {failedOrder.Details}");
             OnPurchaseFailed?.Invoke(failedOrder);
 
@@ -836,6 +930,15 @@ namespace Wagenheimer.IAPHelper
             else
                 Raise(nameof(IAPGlobalEvents.onPurchaseFailed), () => globalEvents.onPurchaseFailed?.Invoke(failedOrder.FailureReason.ToString()));
         }
+
+        /// <summary>
+        /// True when a store "failure" actually means the player already owns the product, so callers must
+        /// treat it as success. <see cref="PurchaseFailureReason.DuplicateTransaction"/> is delivered by the
+        /// stores as "Purchase has already been confirmed." when an order was already completed/confirmed.
+        /// </summary>
+        private static bool IsAlreadyOwnedFailure(FailedOrder failed) =>
+            failed != null && failed.FailureReason == PurchaseFailureReason.DuplicateTransaction;
+
 
         private void HandlePurchaseDeferred(DeferredOrder deferredOrder)
         {

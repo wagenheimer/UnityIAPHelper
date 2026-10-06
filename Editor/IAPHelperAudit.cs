@@ -1,7 +1,9 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -98,10 +100,54 @@ namespace Wagenheimer.IAPHelper.Editor
             AuditErrorDialogWiring(results, csFiles, formInstances);
             AuditRestoreFlow(results, csFiles, formInstances, FindAllComponents<UI.IAPRestoreButton>());
             AuditPackageVersion(results);
+            AuditLocalization(results);
 
             AttachPrompts(results);
 
             return results;
+        }
+
+        /// <summary>
+        /// Verifies that every term <see cref="BaseIAPForm"/> looks up at runtime exists in the project's
+        /// I2 Localization source. A missing key is shown to the player as the raw key, so this is a
+        /// Warning with a one-click fix in the Store Checklist tab.
+        /// </summary>
+        private static void AuditLocalization(List<AuditResult> results)
+        {
+            if (!IAPLocalization.IsAvailable)
+            {
+                results.Add(new AuditResult
+                {
+                    Category = "Localization",
+                    Title = "I2 Localization not detected",
+                    Severity = AuditSeverity.Info,
+                    Detail = "IAPHelper shows player-facing texts through BaseIAPForm. Without I2 (or a custom LocalizationResolver) the raw keys are shown.",
+                    FixHint = "Install I2 Localization and set BaseIAPForm.LocalizationResolver = key => LocalizationManager.GetTranslation(key), or accept the built-in fallbacks."
+                });
+                return;
+            }
+
+            var missing = IAPLocalization.MissingKeys();
+            if (missing.Count == 0)
+            {
+                results.Add(new AuditResult
+                {
+                    Category = "Localization",
+                    Title = "All IAPHelper translation terms exist in I2",
+                    Severity = AuditSeverity.Pass,
+                    Detail = $"{IAPLocalization.Terms.Length} IAPHelper terms found in the project's I2 source."
+                });
+                return;
+            }
+
+            results.Add(new AuditResult
+            {
+                Category = "Localization",
+                Title = $"{missing.Count} IAPHelper translation term(s) missing in I2",
+                Severity = AuditSeverity.Warning,
+                Detail = "Missing: " + string.Join(", ", missing) + ". A missing key is shown to the player as the raw key (e.g. \"purchasefailed\").",
+                FixHint = "Open Dashboard > Store Checklist and click \"Create missing term(s) in I2\" (or add the terms manually to your I2 source)."
+            });
         }
 
         /// <summary>
@@ -982,5 +1028,146 @@ namespace Wagenheimer.IAPHelper.Editor
         }
 
         #endregion
+    }
+
+    /// <summary>
+    /// Reflection-only wrapper over I2 Localization used to audit (and create) the translation terms
+    /// <see cref="BaseIAPForm"/> looks up at runtime. Never references I2 directly, so the package still
+    /// compiles when I2 isn't installed; every member degrades to "not available" instead of throwing.
+    /// </summary>
+    internal static class IAPLocalization
+    {
+        public const string DefaultLanguage = "English";
+
+        /// <summary>Every term key IAPHelper passes to <c>BaseIAPForm.Translate</c>/its error mapping, with an English seed.</summary>
+        public static readonly (string Key, string English)[] Terms =
+        {
+            ("error", "Error"),
+            ("iapnotready", "Purchase system is not ready. Please wait..."),
+            ("loading", "Loading..."),
+            ("productnotfound", "Product not found."),
+            ("purchased", "Already purchased"),
+            ("purchasecompleted", "Purchase completed!"),
+            ("purchasefailed", "Purchase failed."),
+            ("purchaserestored", "Purchases restored!"),
+            ("nopreviouspurchasefound", "No previous purchase found."),
+            ("restorefailed", "Failed to restore purchases."),
+            ("purchasingunavailable", "Purchasing is unavailable."),
+            ("purchasepending", "A purchase is already pending."),
+            ("productunavailable", "This product is unavailable."),
+            ("signatureinvalid", "Purchase receipt validation failed."),
+            ("purchasecancelled", "Purchase cancelled."),
+            ("paymentdeclined", "Payment was declined."),
+            ("duplicatetransaction", "This item has already been purchased."),
+        };
+
+        private static Type _locManager, _sourceType, _termDataType;
+        private static MethodInfo _updateSources, _getTermData, _addTerm, _getLanguageIndex, _addLanguage, _setTranslation, _editorSetDirty;
+        private static FieldInfo _sourcesField, _termLanguages;
+        private static bool _resolved;
+
+        public static bool IsAvailable
+        {
+            get
+            {
+                Resolve();
+                return _sourceType != null && _getTermData != null && _sourcesField != null && _termLanguages != null;
+            }
+        }
+
+        private static Type FindType(string fullName) =>
+            AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(fullName)).FirstOrDefault(t => t != null);
+
+        private static void Resolve()
+        {
+            if (_resolved) return;
+            _resolved = true;
+
+            _locManager = FindType("I2.Loc.LocalizationManager");
+            _sourceType = FindType("I2.Loc.LanguageSourceData");
+            _termDataType = FindType("I2.Loc.TermData");
+            if (_locManager == null || _sourceType == null || _termDataType == null) return;
+
+            _updateSources = _locManager.GetMethod("UpdateSources", BindingFlags.Public | BindingFlags.Static);
+            _sourcesField = _locManager.GetField("Sources", BindingFlags.Public | BindingFlags.Static);
+            _getTermData = _sourceType.GetMethod("GetTermData", new[] { typeof(string), typeof(bool) });
+            _addTerm = _sourceType.GetMethod("AddTerm", new[] { typeof(string) });
+            _getLanguageIndex = _sourceType.GetMethod("GetLanguageIndex", new[] { typeof(string), typeof(bool), typeof(bool) });
+            _addLanguage = _sourceType.GetMethod("AddLanguage", new[] { typeof(string) });
+            _editorSetDirty = _sourceType.GetMethod("Editor_SetDirty", BindingFlags.Public | BindingFlags.Instance);
+            _setTranslation = _termDataType.GetMethod("SetTranslation", new[] { typeof(int), typeof(string), typeof(string) });
+            _termLanguages = _termDataType.GetField("Languages", BindingFlags.Public | BindingFlags.Instance);
+        }
+
+        private static IList Sources()
+        {
+            if (!IsAvailable) return null;
+            _updateSources?.Invoke(null, null);
+            return _sourcesField.GetValue(null) as IList;
+        }
+
+        public static bool TermExists(string term)
+        {
+            if (string.IsNullOrEmpty(term)) return false;
+            var sources = Sources();
+            if (sources == null) return false;
+            foreach (var s in sources)
+                if (_getTermData.Invoke(s, new object[] { term, false }) != null) return true;
+            return false;
+        }
+
+        /// <summary>The IAPHelper terms that do not exist in the project's I2 source (empty when I2 isn't installed).</summary>
+        public static List<string> MissingKeys()
+        {
+            var missing = new List<string>();
+            if (!IsAvailable) return missing;
+            foreach (var t in Terms)
+                if (!TermExists(t.Key)) missing.Add(t.Key);
+            return missing;
+        }
+
+        /// <summary>
+        /// Creates every missing IAPHelper term in the project's first I2 source, seeded with its English
+        /// text (existing terms/translations are never touched), then saves. Returns the created keys.
+        /// </summary>
+        public static List<string> CreateMissingTerms()
+        {
+            var created = new List<string>();
+            var sources = Sources();
+            if (sources == null || sources.Count == 0 || _addTerm == null || _setTranslation == null) return created;
+
+            foreach (var t in Terms)
+            {
+                if (TermExists(t.Key)) continue;
+
+                var termData = _addTerm.Invoke(sources[0], new object[] { t.Key });
+                if (termData == null) continue;
+
+                var langIdx = (int)_getLanguageIndex.Invoke(sources[0], new object[] { DefaultLanguage, true, true });
+                if (langIdx < 0)
+                {
+                    _addLanguage?.Invoke(sources[0], new object[] { DefaultLanguage });
+                    langIdx = (int)_getLanguageIndex.Invoke(sources[0], new object[] { DefaultLanguage, true, true });
+                    if (langIdx < 0) continue;
+                }
+
+                var languages = _termLanguages.GetValue(termData) as string[];
+                if (languages == null || langIdx >= languages.Length || string.IsNullOrEmpty(languages[langIdx]))
+                    _setTranslation.Invoke(termData, new object[] { langIdx, t.English ?? string.Empty, null });
+
+                created.Add(t.Key);
+            }
+
+            if (created.Count > 0) SaveSources();
+            return created;
+        }
+
+        public static void SaveSources()
+        {
+            var sources = Sources();
+            if (sources == null) return;
+            foreach (var s in sources) _editorSetDirty?.Invoke(s, null);
+            AssetDatabase.SaveAssets();
+        }
     }
 }

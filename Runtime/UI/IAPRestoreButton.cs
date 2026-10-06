@@ -136,7 +136,7 @@ namespace Wagenheimer.IAPHelper.UI
             if (helper == null)
             {
                 Debug.LogError("[IAPRestoreButton] Cannot restore: IAPHelper instance not found.");
-                onRestoreFailed?.Invoke("IAPHelper not initialized");
+                onRestoreFailed?.Invoke(Localized("iapnotready", "IAPHelper not initialized"));
                 return;
             }
 
@@ -151,7 +151,7 @@ namespace Wagenheimer.IAPHelper.UI
                     SetLoadingState(false);
                     _isRestoring = false;
                     Debug.LogError("[IAPRestoreButton] IAPHelper failed to initialize.");
-                    onRestoreFailed?.Invoke("Store connection unavailable");
+                    onRestoreFailed?.Invoke(Localized("iapnotready", "Store connection unavailable"));
                     return;
                 }
 
@@ -168,7 +168,7 @@ namespace Wagenheimer.IAPHelper.UI
                     else
                     {
                         Debug.LogError($"[IAPRestoreButton] Purchase restoration failed: {error}");
-                        onRestoreFailed?.Invoke(error ?? "Restoration failed");
+                        onRestoreFailed?.Invoke(string.IsNullOrEmpty(error) ? Localized("restorefailed", "Restoration failed") : error);
                     }
                 });
             }
@@ -178,6 +178,20 @@ namespace Wagenheimer.IAPHelper.UI
                 _isRestoring = false;
                 Debug.LogError($"[IAPRestoreButton] Exception during restore: {ex.Message}");
                 onRestoreFailed?.Invoke(ex.Message);
+            }
+        }
+
+        /// <summary>Localizes a message through <see cref="BaseIAPForm.LocalizationResolver"/> when available.</summary>
+        private static string Localized(string key, string fallback)
+        {
+            try
+            {
+                var value = BaseIAPForm.LocalizationResolver?.Invoke(key);
+                return string.IsNullOrEmpty(value) ? fallback : value;
+            }
+            catch
+            {
+                return fallback;
             }
         }
 

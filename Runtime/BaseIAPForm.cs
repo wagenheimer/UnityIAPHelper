@@ -182,7 +182,8 @@ namespace Wagenheimer.IAPHelper
 
                 if (result.IsSuccess || result.IsAlreadyOwned)
                 {
-                    GrantPurchasedContent();
+                    // Content was already granted via the PurchaseAsync onGrantContent callback
+                    // (fired from OnEntitlementGranted); don't grant a second time here.
                     ShowSuccess(Translate("purchasecompleted"));
                     OnPurchaseSuccess();
                     return;
@@ -259,10 +260,13 @@ namespace Wagenheimer.IAPHelper
                     {
                         if (_iapHelper.HasPurchased(productId))
                         {
-                            GrantPurchasedContent();
-                            ShowSuccess(Translate("purchaserestored"));
-                            OnProductAlreadyOwned();
-                            OnRestoreSuccess();
+                            CompleteRestore();
+                        }
+                        else if (isActiveAndEnabled)
+                        {
+                            // Apple delivers the restored order asynchronously AFTER RestoreTransactions
+                            // returns; give it a moment before declaring "nothing found".
+                            StartCoroutine(WaitForRestoreThenReport());
                         }
                         else
                         {
@@ -282,6 +286,37 @@ namespace Wagenheimer.IAPHelper
                 HidePleaseWait();
                 ShowError(Translate("restorefailed"));
             }
+        }
+
+        /// <summary>How long to wait for the store to deliver a restored order before reporting "none found".</summary>
+        private const float RestoreGraceSeconds = 3f;
+
+        /// <summary>
+        /// Waits (up to <see cref="RestoreGraceSeconds"/>) for a just-restored order to be granted, then
+        /// reports success; otherwise reports that no previous purchase was found.
+        /// </summary>
+        private IEnumerator WaitForRestoreThenReport()
+        {
+            float deadline = Time.unscaledTime + RestoreGraceSeconds;
+            while (Time.unscaledTime < deadline)
+            {
+                if (_iapHelper != null && _iapHelper.HasPurchased(productId))
+                {
+                    CompleteRestore();
+                    yield break;
+                }
+                yield return null;
+            }
+
+            ShowError(Translate("nopreviouspurchasefound"));
+        }
+
+        private void CompleteRestore()
+        {
+            GrantPurchasedContent();
+            ShowSuccess(Translate("purchaserestored"));
+            OnProductAlreadyOwned();
+            OnRestoreSuccess();
         }
 
         #endregion
