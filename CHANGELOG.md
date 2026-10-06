@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.3] - 2026-10-05
+
+### Fixed
+- `PurchaseFailureReason.DuplicateTransaction` ("Purchase has already been confirmed.") is now treated as **already owned** — grant the entitlement and report success — in `OnPurchaseFailed`, in `OnPurchaseConfirmed`'s `FailedOrder`, and in `PurchaseAsync` (resolves `IsSuccess = true, IsAlreadyOwned = true`) instead of surfacing a purchase error.
+- `PurchaseResult.FailureReason` no longer collapses to `Unknown` on a failed confirmation; it now carries the real `FailedOrder.FailureReason`, so the form shows the specific message.
+- `BaseIAPForm.BuyNow` no longer grants the content twice on success (it was already granted via the `PurchaseAsync` onGrantContent callback).
+- `BaseIAPForm.RestorePurchases` now waits a short grace period for the asynchronously delivered (iOS) restored order before reporting "no previous purchase found".
+- `EnsureInitializedAsync` resolves immediately on `OnProductsFetchFailed` instead of waiting for the full timeout.
+- `IAPRestoreButton` fallback messages are now localized through `BaseIAPForm.LocalizationResolver`.
+
+### Added
+- Entitlement reconciliation: on an auth-account change the next successful fetch revokes any product the new account no longer owns; opt-in via `reconcileEntitlementsOnFetch` to also catch refunds (e.g. Google Play) on every fetch.
+- Store Checklist now verifies the 17 translation terms IAPHelper looks up in I2 Localization and offers a one-click button to create the missing ones; the Setup Audit reports missing terms.
+
 ## [1.14.2] - 2026-10-05
 
 ### Documentation
