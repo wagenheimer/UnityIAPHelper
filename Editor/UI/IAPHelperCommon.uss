@@ -87,6 +87,22 @@
     margin-left: 6px;
     padding: 0 10px;
     border-radius: 4px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+/* A leading icon gets its own reserved box; inline, a fallback emoji glyph draws wider than it
+   measures and the following text would overlap it. */
+.iap-btn-icon {
+    min-width: 14px;
+    margin-right: 6px;
+    flex-shrink: 0;
+    -unity-text-align: middle-center;
+}
+
+.iap-btn-text {
+    flex-shrink: 0;
 }
 
 /* Tab Bar */
@@ -102,6 +118,9 @@
     height: 32px;
     font-size: 11px;
     -unity-text-align: middle-center;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
     border-width: 0;
     border-bottom-width: 3px;
     border-bottom-color: transparent;

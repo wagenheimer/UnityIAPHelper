@@ -96,7 +96,8 @@ namespace Wagenheimer.IAPHelper.Editor
             var toolbar = new VisualElement();
             toolbar.AddToClassList("iap-toolbar-actions");
 
-            var updateBtn = new Button(() => UpdateChecker.CheckForUpdate(force: true)) { text = "🔄 Updates" };
+            var updateBtn = new Button(() => UpdateChecker.CheckForUpdate(force: true));
+            IAPHelperUIStyle.ApplyIconText(updateBtn, "🔄 Updates");
             updateBtn.AddToClassList("iap-toolbar-btn");
             toolbar.Add(updateBtn);
 
@@ -130,8 +131,8 @@ namespace Wagenheimer.IAPHelper.Editor
                 {
                     _currentTab = tabEnum;
                     RebuildUI();
-                })
-                { text = $"{t.icon} {t.title}" };
+                });
+                IAPHelperUIStyle.ApplyIconText(btn, $"{t.icon} {t.title}");
 
                 btn.AddToClassList("iap-tab-btn");
                 if (_currentTab == tabEnum)

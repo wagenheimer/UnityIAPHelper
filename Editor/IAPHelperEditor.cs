@@ -44,11 +44,13 @@ namespace Wagenheimer.IAPHelper.Editor
             var toolbar = new VisualElement();
             toolbar.AddToClassList("iap-toolbar-actions");
 
-            var dashBtn = new Button(IAPHelperDashboardWindow.OpenDashboard) { text = "📊 Dashboard" };
+            var dashBtn = new Button(IAPHelperDashboardWindow.OpenDashboard);
+            IAPHelperUIStyle.ApplyIconText(dashBtn, "📊 Dashboard");
             dashBtn.AddToClassList("iap-toolbar-btn");
             toolbar.Add(dashBtn);
 
-            var auditBtn = new Button(IAPHelperDashboardWindow.OpenAuditTab) { text = "🔍 Audit" };
+            var auditBtn = new Button(IAPHelperDashboardWindow.OpenAuditTab);
+            IAPHelperUIStyle.ApplyIconText(auditBtn, "🔍 Audit");
             auditBtn.AddToClassList("iap-toolbar-btn");
             toolbar.Add(auditBtn);
 
@@ -106,7 +108,8 @@ namespace Wagenheimer.IAPHelper.Editor
                 bool isInit = helper.IsInitialized;
                 playCard.Add(IAPHelperUIStyle.CreateBadge(isInit ? "Store Connected: YES" : "Store Connected: NO", isInit ? "pass" : "warn"));
 
-                var fetchBtn = new Button(() => helper.FetchPurchases()) { text = "🔄 Fetch Purchases Now" };
+                var fetchBtn = new Button(() => helper.FetchPurchases());
+                IAPHelperUIStyle.ApplyIconText(fetchBtn, "🔄 Fetch Purchases Now");
                 fetchBtn.AddToClassList("iap-toolbar-btn");
                 fetchBtn.style.marginTop = 6;
                 playCard.Add(fetchBtn);

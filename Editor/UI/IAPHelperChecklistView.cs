@@ -55,7 +55,8 @@ namespace Wagenheimer.IAPHelper.Editor
             _progressLabel.style.color = new Color(0.35f, 0.85f, 0.45f);
             topRow.Add(_progressLabel);
 
-            var resetBtn = new Button(ResetChecklist) { text = "↺ Reset All" };
+            var resetBtn = new Button(ResetChecklist);
+            IAPHelperUIStyle.ApplyIconText(resetBtn, "↺ Reset All");
             resetBtn.AddToClassList("iap-toolbar-btn");
             topRow.Add(resetBtn);
 

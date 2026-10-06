@@ -35,8 +35,8 @@ namespace Wagenheimer.IAPHelper.Editor
             {
                 Selection.activeGameObject = helper.gameObject;
                 EditorGUIUtility.PingObject(helper.gameObject);
-            })
-            { text = "🎯 Select IAPHelper in Hierarchy" };
+            });
+            IAPHelperUIStyle.ApplyIconText(selectBtn, "🎯 Select IAPHelper in Hierarchy");
             selectBtn.AddToClassList("iap-toolbar-btn");
             btnRow.Add(selectBtn);
             headerCard.Add(btnRow);

@@ -59,8 +59,8 @@ namespace Wagenheimer.IAPHelper.Editor
                 comp.AutoResolveComponents();
                 EditorUtility.SetDirty(comp);
                 serializedObject.Update();
-            })
-            { text = "✨ Auto-Resolve Components" };
+            });
+            IAPHelperUIStyle.ApplyIconText(resolveBtn, "✨ Auto-Resolve Components");
             resolveBtn.AddToClassList("iap-toolbar-btn");
             resolveBtn.style.alignSelf = Align.FlexStart;
             resolveBtn.style.marginBottom = 8;

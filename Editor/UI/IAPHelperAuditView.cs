@@ -31,7 +31,8 @@ namespace Wagenheimer.IAPHelper.Editor
 
             var actionsRow = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, marginBottom = 8 } };
 
-            var runBtn = new Button(RunAudit) { text = "▶ Run Audit Now" };
+            var runBtn = new Button(RunAudit);
+            IAPHelperUIStyle.ApplyIconText(runBtn, "▶ Run Audit Now");
             runBtn.AddToClassList("iap-toolbar-btn");
             runBtn.style.backgroundColor = new Color(0.18f, 0.42f, 0.75f);
             runBtn.style.color = Color.white;
@@ -42,11 +43,13 @@ namespace Wagenheimer.IAPHelper.Editor
             filterAllBtn.AddToClassList("iap-toolbar-btn");
             actionsRow.Add(filterAllBtn);
 
-            var filterFailBtn = new Button(() => SetFilter(AuditSeverity.Fail)) { text = "✕ Fails Only" };
+            var filterFailBtn = new Button(() => SetFilter(AuditSeverity.Fail));
+            IAPHelperUIStyle.ApplyIconText(filterFailBtn, "✕ Fails Only");
             filterFailBtn.AddToClassList("iap-toolbar-btn");
             actionsRow.Add(filterFailBtn);
 
-            var filterWarnBtn = new Button(() => SetFilter(AuditSeverity.Warning)) { text = "⚠ Warnings Only" };
+            var filterWarnBtn = new Button(() => SetFilter(AuditSeverity.Warning));
+            IAPHelperUIStyle.ApplyIconText(filterWarnBtn, "⚠ Warnings Only");
             filterWarnBtn.AddToClassList("iap-toolbar-btn");
             actionsRow.Add(filterWarnBtn);
 
@@ -108,16 +111,17 @@ namespace Wagenheimer.IAPHelper.Editor
 
         private static Button CreateCopyButton(string label, string tooltip, Func<string> getText, string copiedLabel = "✓ Copied")
         {
-            var button = new Button { text = label, tooltip = tooltip };
+            var button = new Button { tooltip = tooltip };
+            IAPHelperUIStyle.ApplyIconText(button, label);
             button.AddToClassList("iap-toolbar-btn");
             button.clicked += () =>
             {
                 var text = getText();
-                button.text = string.IsNullOrEmpty(text) ? "Run the audit first" : copiedLabel;
+                IAPHelperUIStyle.ApplyIconText(button, string.IsNullOrEmpty(text) ? "Run the audit first" : copiedLabel);
                 if (!string.IsNullOrEmpty(text))
                     GUIUtility.systemCopyBuffer = text;
 
-                button.schedule.Execute(() => button.text = label).ExecuteLater(CopiedFeedbackMs);
+                button.schedule.Execute(() => IAPHelperUIStyle.ApplyIconText(button, label)).ExecuteLater(CopiedFeedbackMs);
             };
             return button;
         }
