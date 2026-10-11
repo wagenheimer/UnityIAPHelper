@@ -1059,6 +1059,7 @@ namespace Wagenheimer.IAPHelper.Editor
             ("purchasecancelled", "Purchase cancelled."),
             ("paymentdeclined", "Payment was declined."),
             ("duplicatetransaction", "This item has already been purchased."),
+            ("alreadyownedmsg", "You already own this purchase, so no new charge was made. Your content has been restored."),
         };
 
         private static Type _locManager, _sourceType, _termDataType;

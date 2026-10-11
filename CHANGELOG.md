@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.4] - 2026-10-11
+
+### Fixed
+- **A purchase the player already owned closed the form with no message.** `PurchaseAsync` skips the store when the product is already owned (store order, PlayerPrefs fallback or `HasPurchasedFallback`) and returns `IsAlreadyOwned`; `BaseIAPForm.BuyNow` showed the generic "purchase completed" (which was only logged) and closed the form, so the player could not tell nothing was charged. It now shows a dedicated "you already own this, no new charge" message.
+- `BaseIAPForm.ShowSuccess` (purchase completed / purchases restored) was console-only; it now goes through the new `BaseIAPForm.OnShowSuccessNotification` hook so the game can show a popup, like `OnShowErrorNotification` already did for errors.
+
+### Added
+- `PurchaseResult.OwnershipSource`: where an already-owned result came from ("store confirmed order", "PlayerPrefs fallback key ...", "HasPurchasedFallback (game save)").
+- New translation term `alreadyownedmsg`, checked by the Store Checklist (18 terms).
+
 ## [1.14.3] - 2026-10-05
 
 ### Fixed

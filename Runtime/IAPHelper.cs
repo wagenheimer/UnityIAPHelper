@@ -686,7 +686,7 @@ namespace Wagenheimer.IAPHelper
             {
                 Debug.Log($"[IAPHelper] '{productId}' is already owned via {ownedSource}: skipping the store purchase.");
                 onGrantContent?.Invoke();
-                return new PurchaseResult { IsSuccess = true, IsAlreadyOwned = true, ProductId = productId };
+                return new PurchaseResult { IsSuccess = true, IsAlreadyOwned = true, ProductId = productId, OwnershipSource = ownedSource };
             }
 
             Action<string> onGranted = null;
@@ -1472,6 +1472,9 @@ namespace Wagenheimer.IAPHelper
     {
         public bool IsSuccess { get; set; }
         public bool IsAlreadyOwned { get; set; }
+
+        /// <summary>When <see cref="IsAlreadyOwned"/>: where the ownership came from ("store confirmed order", "game save"...).</summary>
+        public string OwnershipSource { get; set; }
         public string ProductId { get; set; }
         public ConfirmedOrder ConfirmedOrder { get; set; }
         public PurchaseFailureReason? FailureReason { get; set; }

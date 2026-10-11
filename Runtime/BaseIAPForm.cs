@@ -29,6 +29,13 @@ namespace Wagenheimer.IAPHelper
         /// </summary>
         public static Action<string> OnShowErrorNotification;
 
+        /// <summary>
+        /// Optional hook for routing SUCCESS/INFO messages (purchase completed, purchases restored, "you already own this")
+        /// to a game-specific popup (e.g. msg => Main.main.formError.ShowSuccess(msg)). Without it those messages are only
+        /// logged and the form simply closes, which looks like the purchase "disappeared".
+        /// </summary>
+        public static Action<string> OnShowSuccessNotification;
+
         #endregion
 
         #region Inspector Fields
@@ -184,7 +191,18 @@ namespace Wagenheimer.IAPHelper
                 {
                     // Content was already granted via the PurchaseAsync onGrantContent callback
                     // (fired from OnEntitlementGranted); don't grant a second time here.
-                    ShowSuccess(Translate("purchasecompleted"));
+                    // An item the player ALREADY owned is not a new purchase: say so explicitly (no new charge),
+                    // otherwise the form just closes and the player cannot tell what happened.
+                    if (result.IsAlreadyOwned)
+                    {
+                        IAPLog.Info($"[{GetType().Name}] {productId} was already owned ({result.OwnershipSource ?? "unknown source"}); no store purchase was started.");
+                        ShowSuccess(Translate("alreadyownedmsg"));
+                    }
+                    else
+                    {
+                        ShowSuccess(Translate("purchasecompleted"));
+                    }
+
                     OnPurchaseSuccess();
                     return;
                 }
@@ -378,7 +396,15 @@ namespace Wagenheimer.IAPHelper
 
         protected virtual void ShowSuccess(string message)
         {
-            IAPLog.Info($"[{GetType().Name}] SUCCESS: {message}");
+            if (OnShowSuccessNotification != null)
+            {
+                IAPLog.Info($"[{GetType().Name}] SUCCESS shown to the player via popup hook: {message}");
+                OnShowSuccessNotification.Invoke(message);
+            }
+            else
+            {
+                IAPLog.Info($"[{GetType().Name}] SUCCESS (console only, OnShowSuccessNotification is not set): {message}");
+            }
         }
 
         protected virtual void ShowError(string message)
