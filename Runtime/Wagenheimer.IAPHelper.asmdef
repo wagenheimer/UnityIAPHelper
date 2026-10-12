@@ -4,6 +4,7 @@
     "references": [
         "Unity.Purchasing",
         "Unity.Purchasing.Stores",
+        "Unity.Services.Core",
         "Unity.TextMeshPro",
         "UnityEngine.UI"
     ],

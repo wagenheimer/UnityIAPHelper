@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.5] - 2026-10-12
+
+### Fixed
+- **"Store override reverse-lookup failed ... Unity Services not initialised" on every restored purchase.** IAP v5 resolves store-specific product ids through Unity Gaming Services, which nothing initialized. `Initialize()` now calls `UnityServices.InitializeAsync()` first (no-op if the game already did it), with a 10 s cap; a failure or timeout is only a warning, since purchases work without it. The runtime asmdef now references `Unity.Services.Core` (a dependency of `com.unity.purchasing` 5).
+
 ## [1.14.4] - 2026-10-11
 
 ### Fixed

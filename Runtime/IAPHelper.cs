@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using UnityEngine;
+using Unity.Services.Core;
 using UnityEngine.Purchasing;
 
 namespace Wagenheimer.IAPHelper
@@ -333,6 +334,8 @@ namespace Wagenheimer.IAPHelper
 
             try
             {
+                await EnsureUnityServicesAsync();
+
                 Debug.Log("[IAPHelper] Initializing StoreController v5...");
 
                 _storeController = UnityIAPServices.StoreController();
@@ -350,6 +353,36 @@ namespace Wagenheimer.IAPHelper
                 Debug.LogError($"[IAPHelper] Exception during initialization: {ex.Message}\n{ex.StackTrace}");
                 OnConnectionFailed?.Invoke(ex.Message);
                 Raise(nameof(IAPGlobalEvents.onConnectionFailed), () => globalEvents.onConnectionFailed?.Invoke(ex.Message));
+            }
+        }
+
+        /// <summary>Upper bound for the Unity Services init, so a slow/offline start never holds the store connection.</summary>
+        private const int UnityServicesInitTimeoutMs = 10000;
+
+        /// <summary>
+        /// IAP v5 resolves store-specific product ids through Unity Gaming Services. Without this, every restored
+        /// purchase logged "Store override reverse-lookup failed ... Unity Services not initialised". Purchases
+        /// still work without it, so a failure or timeout is only a warning and the store connection goes on.
+        /// Calling InitializeAsync when the game already initialized the services is a no-op.
+        /// </summary>
+        private static async Task EnsureUnityServicesAsync()
+        {
+            if (UnityServices.State == ServicesInitializationState.Initialized) return;
+
+            try
+            {
+                var init = UnityServices.InitializeAsync();
+                if (await Task.WhenAny(init, Task.Delay(UnityServicesInitTimeoutMs)) != init)
+                {
+                    Debug.LogWarning("[IAPHelper] Unity Services did not initialize within 10 s; connecting to the store anyway (store-override id lookup unavailable).");
+                    return;
+                }
+                await init; // surfaces a failure as an exception
+                Debug.Log("[IAPHelper] Unity Services initialized.");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[IAPHelper] Unity Services init failed ({ex.Message}); connecting to the store anyway (store-override id lookup unavailable).");
             }
         }
 
