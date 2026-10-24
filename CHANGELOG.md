@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.6] - 2026-10-24
+
+### Fixed
+- **"FetchProducts cannot be invoked if a fetch is already in progress".** `FetchProducts` now coalesces requests: when the auth account changes (Google Play Games sign-in / cloud-save link) during the initial catalog fetch, the second request waits for the first instead of making Unity IAP throw. The pending request runs as soon as the in-flight one finishes.
+- **Store handlers attached twice after a failed connect/fetch.** `Initialize()` could run again (a form retry or `EnsureInitializedAsync`) and registered every store event a second time, so each `OnStoreConnected` triggered two `FetchProducts` calls. Registration is now idempotent, the existing `StoreController` is reused, and an already-connected store only re-fetches the catalog instead of reconnecting.
+- **A cancelled purchase showed "Purchase Failed!".** iOS reports a dismissed payment sheet as `Unknown` + "Request Cancelled". It is now detected as a cancellation (no error popup, no error log, `onPurchaseCancelled` fires) and `PurchaseAsync` normalizes `FailureReason` to `UserCancelled`.
+- **"No previous purchase found" was reported as an error.** A restore that legitimately finds nothing now goes through `BaseIAPForm.ShowInfo` (same popup, informational log), so it no longer reaches crash reporting as an error.
+
+### Added
+- Product-catalog retry with exponential backoff (`productFetchMaxRetries`, default 3, and `productFetchRetryDelaySeconds`, default 3 s) before the failure is reported to the game, so a flaky store connection no longer leaves the purchase form permanently "not ready".
+
 ## [1.14.5] - 2026-10-12
 
 ### Fixed

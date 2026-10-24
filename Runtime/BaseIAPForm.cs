@@ -288,7 +288,7 @@ namespace Wagenheimer.IAPHelper
                         }
                         else
                         {
-                            ShowError(Translate("nopreviouspurchasefound"));
+                            ShowInfo(Translate("nopreviouspurchasefound"));
                         }
                     }
                     else
@@ -326,7 +326,7 @@ namespace Wagenheimer.IAPHelper
                 yield return null;
             }
 
-            ShowError(Translate("nopreviouspurchasefound"));
+            ShowInfo(Translate("nopreviouspurchasefound"));
         }
 
         private void CompleteRestore()
@@ -417,6 +417,25 @@ namespace Wagenheimer.IAPHelper
             else
             {
                 IAPLog.Error($"[{GetType().Name}] ERROR (console only, OnShowErrorNotification is not set): {message}");
+            }
+        }
+
+        /// <summary>
+        /// Shows a message that is NOT a failure (e.g. "no previous purchase found" after a restore that
+        /// legitimately found nothing). It uses the same popup hook so the player still sees it, but is
+        /// logged as information - a restore with nothing to restore is not an error and must not be
+        /// reported as one.
+        /// </summary>
+        protected virtual void ShowInfo(string message)
+        {
+            if (OnShowErrorNotification != null)
+            {
+                IAPLog.Info($"[{GetType().Name}] INFO shown to the player via popup hook: {message}");
+                OnShowErrorNotification.Invoke(message);
+            }
+            else
+            {
+                IAPLog.Info($"[{GetType().Name}] INFO (console only, OnShowErrorNotification is not set): {message}");
             }
         }
 

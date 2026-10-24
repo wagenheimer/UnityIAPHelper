@@ -45,6 +45,20 @@ namespace Wagenheimer.IAPHelper
         private StoreController _storeController;
         private bool _initializing;
 
+        /// <summary>True while the store-controller handlers are attached; re-initializing must not attach them twice.</summary>
+        private bool _eventsRegistered;
+
+        /// <summary>True while a products fetch is in flight — Unity IAP rejects a second one with "FetchProducts cannot be invoked if a fetch is already in progress".</summary>
+        private bool _fetchingProducts;
+
+        /// <summary>A fetch was requested while another was in flight; run it as soon as that one finishes.</summary>
+        private bool _pendingProductFetch;
+
+        /// <summary>Consecutive failed product-fetch attempts, used for the retry backoff.</summary>
+        private int _productFetchAttempt;
+
+        private Coroutine _productFetchRetryRoutine;
+
         /// <summary>
         /// Product IDs already granted in this session (prevents <see cref="OnEntitlementGranted"/> from
         /// firing repeatedly for the same purchase while reprocessing pending/confirmed orders).
@@ -113,6 +127,13 @@ namespace Wagenheimer.IAPHelper
 
         [Tooltip("Automatically attaches the in-game IAPDebugOverlay in Editor and Development Builds. No manual scene setup or code required.")]
         public bool enableDebugOverlay = true;
+
+        [Header("Resilience")]
+        [Tooltip("How many times a failed product fetch (e.g. a flaky store connection) is retried before the failure is reported to the game.")]
+        [Range(0, 5)] public int productFetchMaxRetries = 3;
+
+        [Tooltip("Delay before the first product-fetch retry; it doubles on every further attempt.")]
+        public float productFetchRetryDelaySeconds = 3f;
 
         #endregion
 
@@ -338,11 +359,24 @@ namespace Wagenheimer.IAPHelper
 
                 Debug.Log("[IAPHelper] Initializing StoreController v5...");
 
-                _storeController = UnityIAPServices.StoreController();
+                // Reuse the controller: the service is a singleton, and re-initializing (e.g. after a failed
+                // product fetch) must not attach a second set of handlers to it - that made every store
+                // event fire twice, and two back-to-back FetchProducts is exactly what Unity IAP rejects.
+                _storeController ??= UnityIAPServices.StoreController();
 
                 RegisterEvents();
 
                 _storeController.ProcessPendingOrdersOnPurchasesFetched(processPendingOnFetch);
+
+                if (IsConnected)
+                {
+                    // The store is still connected from a previous attempt; only the catalog is missing.
+                    // Connecting again would fire OnStoreConnected (and another fetch) for nothing.
+                    Debug.Log("[IAPHelper] Store already connected; re-fetching the catalog only.");
+                    _initializing = false;
+                    FetchProducts();
+                    return;
+                }
 
                 Debug.Log("[IAPHelper] Connecting to the store...");
                 await _storeController.Connect();
@@ -390,6 +424,11 @@ namespace Wagenheimer.IAPHelper
         {
             if (_storeController == null) return;
 
+            // Idempotent: Initialize() can run again after a failed connect/fetch. Attaching the handlers a
+            // second time made each store event fire twice (two FetchProducts per OnStoreConnected).
+            if (_eventsRegistered) return;
+            _eventsRegistered = true;
+
             _storeController.OnStoreConnected += HandleStoreConnected;
             _storeController.OnStoreDisconnected += HandleStoreDisconnected;
 
@@ -417,7 +456,8 @@ namespace Wagenheimer.IAPHelper
 
         private void UnregisterEvents()
         {
-            if (_storeController == null) return;
+            if (_storeController == null || !_eventsRegistered) return;
+            _eventsRegistered = false;
 
             _storeController.OnStoreConnected -= HandleStoreConnected;
             _storeController.OnStoreDisconnected -= HandleStoreDisconnected;
@@ -465,6 +505,9 @@ namespace Wagenheimer.IAPHelper
         {
             IsConnected = false;
             _initializing = false;
+            _fetchingProducts = false;
+            _pendingProductFetch = false;
+            CancelProductFetchRetry();
             Debug.LogError($"[IAPHelper] Disconnected from the store: {failure.message}");
             OnConnectionFailed?.Invoke(failure.message);
             Raise(nameof(IAPGlobalEvents.onConnectionFailed), () => globalEvents.onConnectionFailed?.Invoke(failure.message));
@@ -489,6 +532,19 @@ namespace Wagenheimer.IAPHelper
                 Debug.LogWarning("[IAPHelper] Cannot fetch products: store not connected.");
                 return;
             }
+
+            // Unity IAP refuses a second FetchProducts while one is running. That happens naturally when
+            // the auth account changes (Google Play Games sign-in) right after the store connects, or when
+            // a form retries. Coalesce the request instead of letting the store throw.
+            if (_fetchingProducts)
+            {
+                _pendingProductFetch = true;
+                Debug.Log("[IAPHelper] Product fetch already in progress; the new request will run when it finishes.");
+                return;
+            }
+
+            _fetchingProducts = true;
+            _pendingProductFetch = false;
 
             try
             {
@@ -526,6 +582,7 @@ namespace Wagenheimer.IAPHelper
             }
             catch (Exception ex)
             {
+                _fetchingProducts = false;
                 Debug.LogError($"[IAPHelper] Error fetching products: {ex.Message}");
             }
         }
@@ -535,6 +592,9 @@ namespace Wagenheimer.IAPHelper
             ProductsLoaded = true;
             IsInitialized = true;
             _initializing = false;
+            _fetchingProducts = false;
+            _productFetchAttempt = 0;
+            CancelProductFetchRetry();
 
             Debug.Log($"[IAPHelper] Products loaded successfully: {fetchedProducts?.Count ?? 0}");
 
@@ -550,15 +610,66 @@ namespace Wagenheimer.IAPHelper
             OnInitialized?.Invoke();
             Raise(nameof(IAPGlobalEvents.onProductsFetched), () => globalEvents.onProductsFetched?.Invoke());
             Raise(nameof(IAPGlobalEvents.onInitialized), () => globalEvents.onInitialized?.Invoke());
+
+            // A caller asked for the catalog while this fetch was in flight (auth change, form retry).
+            if (_pendingProductFetch)
+            {
+                _pendingProductFetch = false;
+                FetchProducts();
+            }
         }
 
         private void HandleProductsFetchFailed(ProductFetchFailed failure)
         {
             _initializing = false;
+            _fetchingProducts = false;
+            _pendingProductFetch = false;
             string reason = failure?.FailureReason.ToString() ?? "Unknown";
+
+            // A transient store failure is worth one more try before the game is told the catalog is
+            // unavailable (and shows "purchase system not ready" to the player).
+            if (ScheduleProductFetchRetry())
+            {
+                Debug.LogWarning($"[IAPHelper] Failed to load products ({reason}); retry {_productFetchAttempt}/{productFetchMaxRetries} scheduled.");
+                return;
+            }
+
             Debug.LogError($"[IAPHelper] Failed to load products: {reason}");
             OnProductsFetchFailed?.Invoke(reason);
             Raise(nameof(IAPGlobalEvents.onProductsFetchFailed), () => globalEvents.onProductsFetchFailed?.Invoke(reason));
+        }
+
+        /// <summary>Starts a backoff retry for the product catalog; false when out of retries or disconnected.</summary>
+        private bool ScheduleProductFetchRetry()
+        {
+            if (!IsConnected || productFetchMaxRetries <= 0 || _productFetchAttempt >= productFetchMaxRetries)
+                return false;
+
+            float delay = productFetchRetryDelaySeconds * Mathf.Pow(2f, _productFetchAttempt);
+            _productFetchAttempt++;
+            CancelProductFetchRetry();
+            _productFetchRetryRoutine = StartCoroutine(RetryProductFetchAfter(delay));
+            return true;
+        }
+
+        private IEnumerator RetryProductFetchAfter(float delay)
+        {
+            yield return new WaitForSecondsRealtime(delay);
+            _productFetchRetryRoutine = null;
+
+            if (!IsConnected || IsInitialized)
+                yield break;
+
+            Debug.Log($"[IAPHelper] Retrying product fetch (attempt {_productFetchAttempt}/{productFetchMaxRetries})...");
+            FetchProducts();
+        }
+
+        private void CancelProductFetchRetry()
+        {
+            if (_productFetchRetryRoutine == null) return;
+
+            StopCoroutine(_productFetchRetryRoutine);
+            _productFetchRetryRoutine = null;
         }
 
         #endregion
@@ -787,7 +898,9 @@ namespace Wagenheimer.IAPHelper
                 {
                     IsSuccess = false,
                     ProductId = productId,
-                    FailureReason = failedOrder.FailureReason,
+                    // A cancelled request is reported by iOS as Unknown + "Request Cancelled"; normalize it so
+                    // the form can close silently instead of showing a "Purchase Failed!" error.
+                    FailureReason = IsCancellation(failedOrder) ? PurchaseFailureReason.UserCancelled : failedOrder.FailureReason,
                     ErrorMessage = failedOrder.Details
                 });
             };
@@ -955,14 +1068,31 @@ namespace Wagenheimer.IAPHelper
                 return;
             }
 
+            if (IsCancellation(failedOrder))
+            {
+                // The player closed the payment sheet (or the store cancelled the request). Nothing failed,
+                // nothing was charged: log as information so it never reaches crash reporting as an error.
+                Debug.Log($"[IAPHelper] Purchase cancelled for '{GetOrderProductId(failedOrder)}' ({failedOrder.Details}). No charge was made.");
+                OnPurchaseFailed?.Invoke(failedOrder);
+                Raise(nameof(IAPGlobalEvents.onPurchaseCancelled), () => globalEvents.onPurchaseCancelled?.Invoke());
+                return;
+            }
+
             Debug.LogError($"[IAPHelper] Purchase failed: {failedOrder.FailureReason} - {failedOrder.Details}");
             OnPurchaseFailed?.Invoke(failedOrder);
-
-            if (failedOrder.FailureReason == PurchaseFailureReason.UserCancelled)
-                Raise(nameof(IAPGlobalEvents.onPurchaseCancelled), () => globalEvents.onPurchaseCancelled?.Invoke());
-            else
-                Raise(nameof(IAPGlobalEvents.onPurchaseFailed), () => globalEvents.onPurchaseFailed?.Invoke(failedOrder.FailureReason.ToString()));
+            Raise(nameof(IAPGlobalEvents.onPurchaseFailed), () => globalEvents.onPurchaseFailed?.Invoke(failedOrder.FailureReason.ToString()));
         }
+
+        /// <summary>
+        /// True when a store "failure" is really a cancellation, so it must not be surfaced as an error:
+        /// iOS reports a dismissed payment sheet as <see cref="PurchaseFailureReason.Unknown"/> with the
+        /// detail "Request Cancelled".
+        /// </summary>
+        private static bool IsCancellation(FailedOrder failed) =>
+            failed != null &&
+            (failed.FailureReason == PurchaseFailureReason.UserCancelled ||
+             (!string.IsNullOrEmpty(failed.Details) &&
+              failed.Details.IndexOf("cancel", StringComparison.OrdinalIgnoreCase) >= 0));
 
         /// <summary>
         /// True when a store "failure" actually means the player already owns the product, so callers must
