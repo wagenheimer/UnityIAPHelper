@@ -22,7 +22,11 @@ namespace Wagenheimer.IAPHelper.Editor
         {
             var headerCard = IAPHelperUIStyle.CreateCard("📦 In-App Purchase Product Catalog", "Live inspection of products defined in your active IAPHelper component.");
 
+#if UNITY_2022_2_OR_NEWER
+            var helper = UnityEngine.Object.FindAnyObjectByType<IAPHelper>();
+#else
             var helper = UnityEngine.Object.FindObjectOfType<IAPHelper>();
+#endif
             if (helper == null)
             {
                 headerCard.Add(IAPHelperUIStyle.CreateCallout("No IAPHelper component found in the open scene. Add an IAPHelper GameObject to configure products.", "warn"));

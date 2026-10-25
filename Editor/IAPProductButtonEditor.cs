@@ -115,7 +115,11 @@ namespace Wagenheimer.IAPHelper.Editor
 
         private List<string> GetAvailableCatalogProductIds()
         {
-            var helper = UnityEngine.Object.FindObjectOfType<IAPHelper>();
+    #if UNITY_2022_2_OR_NEWER
+        var helper = UnityEngine.Object.FindAnyObjectByType<IAPHelper>();
+#else
+        var helper = UnityEngine.Object.FindObjectOfType<IAPHelper>();
+#endif
             if (helper != null && helper.products != null)
             {
                 return helper.products

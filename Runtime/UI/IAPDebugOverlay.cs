@@ -1150,7 +1150,11 @@ namespace Wagenheimer.IAPHelper.UI
         /// </summary>
         public static IAPDebugOverlay CreateOverlay()
         {
+#if UNITY_2022_2_OR_NEWER
+            var existing = FindAnyObjectByType<IAPDebugOverlay>();
+#else
             var existing = FindObjectOfType<IAPDebugOverlay>();
+#endif
             if (existing != null) return existing;
 
             var go = new GameObject("IAPDebugOverlay", typeof(IAPDebugOverlay));

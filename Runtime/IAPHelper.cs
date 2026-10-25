@@ -87,7 +87,7 @@ namespace Wagenheimer.IAPHelper
             {
                 id = "unlockfullgame",
                 type = ProductType.NonConsumable,
-                amazonId = "unlockfullgameamazon"
+                amazonId = ""
             }
         };
 
@@ -200,6 +200,13 @@ namespace Wagenheimer.IAPHelper
         public event Action<Product> OnPromotionalPurchaseIntercepted;
 
         /// <summary>
+        /// Fired when a purchase is rejected before reaching the store (store not connected or the
+        /// product catalog has not loaded yet). Arguments: product id and reason. Use it to show
+        /// immediate UI feedback instead of leaving the button waiting.
+        /// </summary>
+        public event Action<string, string> OnPurchaseUnavailable;
+
+        /// <summary>
         /// Fired when an entitlement is revoked by the store (e.g. Apple refund or family sharing cancellation).
         /// </summary>
         public event Action<string> OnEntitlementRevoked;
@@ -211,6 +218,9 @@ namespace Wagenheimer.IAPHelper
         public bool IsInitialized { get; private set; }
         public bool IsConnected { get; private set; }
         public bool ProductsLoaded { get; private set; }
+
+        /// <summary>True when the store is connected and the product catalog is available.</summary>
+        public bool IsStoreReady => IsConnected && ProductsLoaded;
 
         #endregion
 
@@ -240,7 +250,11 @@ namespace Wagenheimer.IAPHelper
 
         private void EnsureDebugOverlay()
         {
+#if UNITY_2022_2_OR_NEWER
+            if (GetComponent<UI.IAPDebugOverlay>() == null && FindAnyObjectByType<UI.IAPDebugOverlay>() == null)
+#else
             if (GetComponent<UI.IAPDebugOverlay>() == null && FindObjectOfType<UI.IAPDebugOverlay>() == null)
+#endif
             {
                 gameObject.AddComponent<UI.IAPDebugOverlay>();
             }
@@ -850,9 +864,9 @@ namespace Wagenheimer.IAPHelper
 
         public void Purchase(string productId)
         {
-            if (!IsConnected || !ProductsLoaded)
+            if (!IsStoreReady)
             {
-                Debug.LogError("[IAPHelper] Store is not ready for purchases.");
+                RejectPurchase(productId, "The store is not ready yet.");
                 return;
             }
 
@@ -873,7 +887,15 @@ namespace Wagenheimer.IAPHelper
             catch (Exception ex)
             {
                 Debug.LogError($"[IAPHelper] Error purchasing product '{productId}': {ex.Message}");
+                OnPurchaseUnavailable?.Invoke(productId, ex.Message);
             }
+        }
+
+        private void RejectPurchase(string productId, string reason)
+        {
+            Debug.LogError($"[IAPHelper] Purchase('{productId}') rejected: {reason}");
+            OnPurchaseUnavailable?.Invoke(productId, reason);
+            Raise(nameof(IAPGlobalEvents.onPurchaseFailed), () => globalEvents.onPurchaseFailed?.Invoke(reason));
         }
 
         /// <summary>
@@ -901,6 +923,17 @@ namespace Wagenheimer.IAPHelper
                 Debug.Log($"[IAPHelper] '{productId}' is already owned via {ownedSource}: skipping the store purchase.");
                 onGrantContent?.Invoke();
                 return new PurchaseResult { IsSuccess = true, IsAlreadyOwned = true, ProductId = productId, OwnershipSource = ownedSource };
+            }
+
+            if (!IsStoreReady)
+            {
+                RejectPurchase(productId, "The store is not ready yet.");
+                return new PurchaseResult
+                {
+                    IsSuccess = false,
+                    ProductId = productId,
+                    ErrorMessage = "The store is not ready yet."
+                };
             }
 
             Action<string> onGranted = null;
@@ -1632,8 +1665,8 @@ namespace Wagenheimer.IAPHelper
         [Tooltip("Apple App Store product ID if different from main ID.")]
         public string appleId = "";
 
-        [Tooltip("Amazon Appstore product ID if different from main ID.")]
-        public string amazonId = "unlockfullgameamazon";
+        [Tooltip("Amazon Appstore product ID if different from the main ID. Leave empty to use the main ID.")]
+        public string amazonId = "";
 
         [Tooltip("Fallback title displayed when offline, in Editor, or before store metadata loads.")]
         public string titleFallback = "";
