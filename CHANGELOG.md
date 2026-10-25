@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.7] - 2026-10-25
+
+### Fixed
+- **"Disconnected from the store: GooglePlayStore connection failed" was reported as an error on transient store failures.** A dropped/unavailable store connection (Play Store updating, device offline, billing client unavailable) is now retried with exponential backoff (`storeConnectMaxRetries`, default 2, and `storeConnectRetryDelaySeconds`, default 5 s) before `onConnectionFailed` fires and before the failure is logged as an error. The same retry covers an exception thrown while connecting.
+- The reconnect budget resets only when the catalog is actually fetched (a healthy connection), so a store that connects and immediately drops cannot loop forever; a user-facing attempt (`EnsureInitializedAsync`, i.e. opening the purchase form) starts a fresh budget.
+
 ## [1.14.6] - 2026-10-24
 
 ### Fixed

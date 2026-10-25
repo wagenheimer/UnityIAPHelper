@@ -59,6 +59,11 @@ namespace Wagenheimer.IAPHelper
 
         private Coroutine _productFetchRetryRoutine;
 
+        /// <summary>Consecutive failed store-connection attempts, used for the reconnect backoff.</summary>
+        private int _storeConnectAttempt;
+
+        private Coroutine _storeConnectRetryRoutine;
+
         /// <summary>
         /// Product IDs already granted in this session (prevents <see cref="OnEntitlementGranted"/> from
         /// firing repeatedly for the same purchase while reprocessing pending/confirmed orders).
@@ -134,6 +139,12 @@ namespace Wagenheimer.IAPHelper
 
         [Tooltip("Delay before the first product-fetch retry; it doubles on every further attempt.")]
         public float productFetchRetryDelaySeconds = 3f;
+
+        [Tooltip("How many times a failed store connection (e.g. Google Play Billing unavailable) is retried before the failure is reported to the game.")]
+        [Range(0, 5)] public int storeConnectMaxRetries = 2;
+
+        [Tooltip("Delay before the first reconnect attempt; it doubles on every further attempt.")]
+        public float storeConnectRetryDelaySeconds = 5f;
 
         #endregion
 
@@ -284,6 +295,9 @@ namespace Wagenheimer.IAPHelper
             OnConnectionFailed += onFail;
             OnProductsFetchFailed += onProductsFail;
 
+            // A user-facing attempt (opening the purchase form) gets a fresh reconnect budget.
+            _storeConnectAttempt = 0;
+
             Initialize();
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
@@ -297,6 +311,8 @@ namespace Wagenheimer.IAPHelper
 
         protected virtual void OnDestroy()
         {
+            CancelProductFetchRetry();
+            CancelStoreReconnect();
             UnregisterEvents();
         }
 
@@ -384,6 +400,13 @@ namespace Wagenheimer.IAPHelper
             catch (Exception ex)
             {
                 _initializing = false;
+
+                if (ScheduleStoreReconnect())
+                {
+                    Debug.LogWarning($"[IAPHelper] Exception during initialization ({ex.Message}). Reconnect {_storeConnectAttempt}/{storeConnectMaxRetries} scheduled.");
+                    return;
+                }
+
                 Debug.LogError($"[IAPHelper] Exception during initialization: {ex.Message}\n{ex.StackTrace}");
                 OnConnectionFailed?.Invoke(ex.Message);
                 Raise(nameof(IAPGlobalEvents.onConnectionFailed), () => globalEvents.onConnectionFailed?.Invoke(ex.Message));
@@ -491,6 +514,7 @@ namespace Wagenheimer.IAPHelper
         private void HandleStoreConnected()
         {
             IsConnected = true;
+            CancelStoreReconnect();
             Debug.Log("[IAPHelper] Connected to the store successfully.");
 
             FetchProducts();
@@ -508,9 +532,52 @@ namespace Wagenheimer.IAPHelper
             _fetchingProducts = false;
             _pendingProductFetch = false;
             CancelProductFetchRetry();
+
+            // A dropped/unavailable store connection (e.g. "GooglePlayStore connection failed" on a device
+            // whose Play Store was updating or offline) is usually transient: reconnect before telling the
+            // game - and crash reporting - that the store is unavailable.
+            if (ScheduleStoreReconnect())
+            {
+                Debug.LogWarning($"[IAPHelper] Disconnected from the store: {failure.message}. Reconnect {_storeConnectAttempt}/{storeConnectMaxRetries} scheduled.");
+                return;
+            }
+
             Debug.LogError($"[IAPHelper] Disconnected from the store: {failure.message}");
             OnConnectionFailed?.Invoke(failure.message);
             Raise(nameof(IAPGlobalEvents.onConnectionFailed), () => globalEvents.onConnectionFailed?.Invoke(failure.message));
+        }
+
+        /// <summary>Starts a backoff reconnect; false when out of retries or the helper is shutting down.</summary>
+        private bool ScheduleStoreReconnect()
+        {
+            if (!isActiveAndEnabled || storeConnectMaxRetries <= 0 || _storeConnectAttempt >= storeConnectMaxRetries)
+                return false;
+
+            float delay = storeConnectRetryDelaySeconds * Mathf.Pow(2f, _storeConnectAttempt);
+            _storeConnectAttempt++;
+            CancelStoreReconnect();
+            _storeConnectRetryRoutine = StartCoroutine(ReconnectStoreAfter(delay));
+            return true;
+        }
+
+        private IEnumerator ReconnectStoreAfter(float delay)
+        {
+            yield return new WaitForSecondsRealtime(delay);
+            _storeConnectRetryRoutine = null;
+
+            if (IsConnected || IsInitialized)
+                yield break;
+
+            Debug.Log($"[IAPHelper] Reconnecting to the store (attempt {_storeConnectAttempt}/{storeConnectMaxRetries})...");
+            Initialize();
+        }
+
+        private void CancelStoreReconnect()
+        {
+            if (_storeConnectRetryRoutine == null) return;
+
+            StopCoroutine(_storeConnectRetryRoutine);
+            _storeConnectRetryRoutine = null;
         }
 
         private void HandleAuthAccountChanged()
@@ -595,6 +662,9 @@ namespace Wagenheimer.IAPHelper
             _fetchingProducts = false;
             _productFetchAttempt = 0;
             CancelProductFetchRetry();
+            // A loaded catalog proves the store connection is healthy, so the reconnect budget starts over.
+            _storeConnectAttempt = 0;
+            CancelStoreReconnect();
 
             Debug.Log($"[IAPHelper] Products loaded successfully: {fetchedProducts?.Count ?? 0}");
 
