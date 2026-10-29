@@ -1,7 +1,7 @@
 # Unity IAP Helper
 
 [![UPM](https://img.shields.io/badge/UPM-com.wagenheimer.iaphelper-green.svg)](https://github.com/wagenheimer/UnityIAPHelper)
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/wagenheimer/UnityIAPHelper/releases)
+[![Version](https://img.shields.io/github/v/tag/wagenheimer/UnityIAPHelper?label=version&color=blue)](https://github.com/wagenheimer/UnityIAPHelper/releases)
 [![Unity](https://img.shields.io/badge/unity-2021.3%2B-black.svg)](https://unity.com)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
 
