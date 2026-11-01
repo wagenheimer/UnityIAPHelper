@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.1] - 2026-11-01
+
+### Fixed
+- treat a cancelled restore as a no-op instead of an error
+
+### Changed
+- chore: add issue and pull request templates [skip ci]
+- ci: add automated version bump workflow [skip ci]
+- chore: add issue/PR templates and ecosystem footer [skip ci]
+- docs: update install pin and version badge to the current release
+
 ## [1.15.0] - 2026-10-25
 
 ### Added
