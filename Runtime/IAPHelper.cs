@@ -1193,9 +1193,18 @@ namespace Wagenheimer.IAPHelper
         /// </summary>
         private static bool IsCancellation(FailedOrder failed) =>
             failed != null &&
-            (failed.FailureReason == PurchaseFailureReason.UserCancelled ||
-             (!string.IsNullOrEmpty(failed.Details) &&
-              failed.Details.IndexOf("cancel", StringComparison.OrdinalIgnoreCase) >= 0));
+            (failed.FailureReason == PurchaseFailureReason.UserCancelled || IsCancellationError(failed.Details));
+
+        /// <summary>
+        /// True when a store error string means the request was cancelled — the player dismissed the
+        /// payment/restore sheet, or the store cancelled it. Apple words it "Request Canceled" (also
+        /// "Request Cancelled"), and <see cref="IStoreController.RestoreTransactions"/> hands it over as a
+        /// plain string instead of a <see cref="PurchaseFailureReason"/>. Callers must treat it as a no-op:
+        /// nothing failed, nothing was charged and nothing is pending.
+        /// </summary>
+        public static bool IsCancellationError(string error) =>
+            !string.IsNullOrEmpty(error) &&
+            error.IndexOf("cancel", StringComparison.OrdinalIgnoreCase) >= 0;
 
         /// <summary>
         /// True when a store "failure" actually means the player already owns the product, so callers must
@@ -1549,6 +1558,11 @@ namespace Wagenheimer.IAPHelper
                 {
                     if (success)
                         Debug.Log("[IAPHelper] RestoreTransactions completed successfully.");
+                    else if (IsCancellationError(error))
+                        // The player dismissed the App Store sheet, which iOS reports as the error string
+                        // "Request Canceled". Nothing failed and nothing is pending, so this must not be
+                        // reported as an error (it used to reach crash reporting as one).
+                        Debug.Log($"[IAPHelper] Restore cancelled by the player ({error}). No error.");
                     else
                         Debug.LogError($"[IAPHelper] RestoreTransactions failed: {error}");
 

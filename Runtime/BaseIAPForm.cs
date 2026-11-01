@@ -293,7 +293,18 @@ namespace Wagenheimer.IAPHelper
                     }
                     else
                     {
-                        ShowError(Translate("restorefailed"));
+                        if (IAPHelper.IsCancellationError(error))
+                        {
+                            // The player closed the store sheet, so nothing failed: stay silent, exactly like a
+                            // cancelled purchase does (see the UserCancelled branch of the purchase flow).
+                            // Reporting it as an error showed "Failed to restore purchases." for an action the
+                            // player took himself, and pushed it to crash reporting as an error.
+                            IAPLog.Info($"[{GetType().Name}] Restore cancelled by the player.");
+                        }
+                        else
+                        {
+                            ShowError(Translate("restorefailed"));
+                        }
                     }
                 });
             }

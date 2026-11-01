@@ -165,6 +165,12 @@ namespace Wagenheimer.IAPHelper.UI
                         Debug.Log("[IAPRestoreButton] Purchases restored successfully.");
                         onRestoreSuccess?.Invoke();
                     }
+                    else if (IAPHelper.IsCancellationError(error))
+                    {
+                        // The player closed the store sheet: nothing failed, so no error log and no
+                        // onRestoreFailed (same rule the purchase flow follows for cancellations).
+                        Debug.Log($"[IAPRestoreButton] Restoration cancelled by the player ({error}). No error.");
+                    }
                     else
                     {
                         Debug.LogError($"[IAPRestoreButton] Purchase restoration failed: {error}");
