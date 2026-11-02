@@ -19,6 +19,28 @@
     "dashboard"
   ],
   "category": "Monetization",
+  "wagenheimer": {
+    "defines": [
+      {
+        "symbol": "AMAZON_STORE",
+        "description": "Makes IAPHelper use each product's amazonId (Amazon Appstore build) instead of the Google Play id. Set it on Amazon profiles.",
+        "scope": "global",
+        "requiredWhen": [
+          "publisher:AmazonAndroidFull",
+          "publisher:AmazonAndroidFree"
+        ],
+        "forbiddenWhen": [
+          "publisher:GoogleAndroidFull",
+          "publisher:GoogleAndroidFree",
+          "ios"
+        ],
+        "platforms": [
+          "Android"
+        ],
+        "severity": "warning"
+      }
+    ]
+  },
   "dependencies": {
     "com.unity.purchasing": "5.4.3",
     "com.unity.services.core": "1.12.5"
