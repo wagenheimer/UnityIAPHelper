@@ -70,6 +70,13 @@ namespace Wagenheimer.IAPHelper
         /// </summary>
         private readonly HashSet<string> _grantedProductIds = new HashSet<string>();
 
+        /// <summary>
+        /// Orders already sent to <see cref="IStoreController.ConfirmPurchase"/> in this session. Unity IAP v5
+        /// rejects the same <see cref="PendingOrder"/> a second time ("Duplicate order requested for
+        /// confirmation"), which surfaced to the player as a failed purchase even though it had succeeded.
+        /// </summary>
+        private readonly HashSet<string> _confirmationRequests = new HashSet<string>();
+
         private float _lastResumeFetchTime = float.NegativeInfinity;
         private const float ResumeFetchCooldownSeconds = 5f;
 
@@ -1116,16 +1123,38 @@ namespace Wagenheimer.IAPHelper
                 return;
             }
 
+            var productId = GetOrderProductId(order);
+            var confirmationKey = GetConfirmationKey(order);
+
+            if (!_confirmationRequests.Add(confirmationKey))
+            {
+                Debug.Log($"[IAPHelper] Confirmation already requested for '{productId}' (transaction {order.Info?.TransactionID}); skipping duplicate.");
+                return;
+            }
+
             try
             {
-                var productId = GetOrderProductId(order);
                 Debug.Log($"[IAPHelper] Confirming order with the store for: {productId}");
                 _storeController.ConfirmPurchase(order);
             }
             catch (Exception ex)
             {
+                // Let a later fetch retry this order instead of leaving it unconfirmable for the session.
+                _confirmationRequests.Remove(confirmationKey);
                 Debug.LogError($"[IAPHelper] Error confirming purchase: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Stable key for an order so the same pending order is confirmed only once. Falls back to the
+        /// product plus object hash when the store did not provide a transaction id.
+        /// </summary>
+        private static string GetConfirmationKey(Order order)
+        {
+            var transactionId = order?.Info?.TransactionID;
+            return string.IsNullOrEmpty(transactionId)
+                ? GetOrderProductId(order) + "|" + (order?.GetHashCode() ?? 0)
+                : transactionId;
         }
 
         private void HandlePurchaseConfirmed(Order order)
@@ -1149,6 +1178,8 @@ namespace Wagenheimer.IAPHelper
                 }
                 else
                 {
+                    // Allow a later fetch to retry an order the store really did not confirm.
+                    _confirmationRequests.Remove(GetConfirmationKey(order));
                     Debug.LogError($"[IAPHelper] Purchase confirmation failed for: {productId} - {failed.Details}");
                     Raise(nameof(IAPGlobalEvents.onPurchaseFailed), () => globalEvents.onPurchaseFailed?.Invoke($"{failed.Details}"));
                 }
@@ -1212,7 +1243,10 @@ namespace Wagenheimer.IAPHelper
         /// stores as "Purchase has already been confirmed." when an order was already completed/confirmed.
         /// </summary>
         private static bool IsAlreadyOwnedFailure(FailedOrder failed) =>
-            failed != null && failed.FailureReason == PurchaseFailureReason.DuplicateTransaction;
+            failed != null &&
+            (failed.FailureReason == PurchaseFailureReason.DuplicateTransaction ||
+             (!string.IsNullOrEmpty(failed.Details) &&
+              failed.Details.IndexOf("Duplicate order", StringComparison.OrdinalIgnoreCase) >= 0));
 
 
         private void HandlePurchaseDeferred(DeferredOrder deferredOrder)
