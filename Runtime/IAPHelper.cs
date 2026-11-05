@@ -1227,15 +1227,56 @@ namespace Wagenheimer.IAPHelper
             (failed.FailureReason == PurchaseFailureReason.UserCancelled || IsCancellationError(failed.Details));
 
         /// <summary>
+        /// Stems of the word "cancelled" in the languages the stores can localize their error strings to.
+        /// The App Store returns <see cref="IStoreController.RestoreTransactions"/> errors in the device
+        /// language (e.g. Russian "Запрос отменен" = "Request cancelled"), so an English-only check kept
+        /// reporting a sheet the player dismissed as a real failure.
+        /// </summary>
+        private static readonly string[] CancellationErrorStems =
+        {
+            "cancel",      // en
+            "отмен",       // ru (Запрос отменен / отменён)
+            "скасован",    // uk
+            "cancelad",    // es / pt
+            "annul",       // fr / it
+            "abgebrochen", // de
+            "storniert",   // de
+            "geannuleerd", // nl
+            "anulow",      // pl
+            "iptal",       // tr
+            "megszakít",   // hu
+            "zruš",        // cs
+            "avbrut",      // sv / da / no
+            "peruut",      // fi
+            "ακυρ",        // el
+            "anulat",      // ro
+            "キャンセル",   // ja
+            "취소",         // ko
+            "取消",         // zh
+            "إلغاء",       // ar
+            "בוטל",        // he
+            "ยกเลิก",      // th
+            "hủy",         // vi
+            "dibatalkan",  // id / ms
+        };
+
+        /// <summary>
         /// True when a store error string means the request was cancelled — the player dismissed the
         /// payment/restore sheet, or the store cancelled it. Apple words it "Request Canceled" (also
         /// "Request Cancelled"), and <see cref="IStoreController.RestoreTransactions"/> hands it over as a
         /// plain string instead of a <see cref="PurchaseFailureReason"/>. Callers must treat it as a no-op:
         /// nothing failed, nothing was charged and nothing is pending.
         /// </summary>
-        public static bool IsCancellationError(string error) =>
-            !string.IsNullOrEmpty(error) &&
-            error.IndexOf("cancel", StringComparison.OrdinalIgnoreCase) >= 0;
+        public static bool IsCancellationError(string error)
+        {
+            if (string.IsNullOrEmpty(error)) return false;
+
+            var lower = error.ToLowerInvariant();
+            foreach (var stem in CancellationErrorStems)
+                if (lower.Contains(stem)) return true;
+
+            return false;
+        }
 
         /// <summary>
         /// True when a store "failure" actually means the player already owns the product, so callers must
