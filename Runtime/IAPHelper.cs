@@ -563,7 +563,11 @@ namespace Wagenheimer.IAPHelper
                 return;
             }
 
-            Debug.LogError($"[IAPHelper] Disconnected from the store: {failure.message}");
+            // Depois de esgotar as reconexões, a loja continua indisponível: o jogo precisa saber
+            // (evento), mas isso NÃO é um erro de código — é dispositivo sem Play Store/offline/
+            // loja atualizando. Logar como erro mandava o Sentry abrir um "erro" para cada um
+            // desses casos (STORM-TALE-2-D). O evento continua disparando para a UI.
+            Debug.LogWarning($"[IAPHelper] Disconnected from the store: {failure.message}");
             OnConnectionFailed?.Invoke(failure.message);
             Raise(nameof(IAPGlobalEvents.onConnectionFailed), () => globalEvents.onConnectionFailed?.Invoke(failure.message));
         }
@@ -725,7 +729,10 @@ namespace Wagenheimer.IAPHelper
                 return;
             }
 
-            Debug.LogError($"[IAPHelper] Failed to load products: {reason}");
+            // Catálogo indisponível depois de todas as tentativas: o jogo recebe o evento e mostra
+            // "loja indisponível". Não é defeito do jogo (rede/StoreKit/Play Store), então fica como
+            // warning para não virar erro no Sentry (STORM-TALE-2-A).
+            Debug.LogWarning($"[IAPHelper] Failed to load products: {reason}");
             OnProductsFetchFailed?.Invoke(reason);
             Raise(nameof(IAPGlobalEvents.onProductsFetchFailed), () => globalEvents.onProductsFetchFailed?.Invoke(reason));
         }
