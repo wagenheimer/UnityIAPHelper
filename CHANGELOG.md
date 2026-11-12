@@ -20,6 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - dedupe pending order confirmation and treat duplicate-order failures as owned (STORM-TALE-2-T, STORM-TALE-2-7)
 
+## [Unreleased]
+
+### Added
+- `IAPBootstrap.Ensure(productIds, prefabResourcePath)`: creates and initializes the shared `IAPHelper`
+  from code (serialized Resources prefab first, programmatic non-consumable catalog as fallback), for
+  games that keep product ids in constants instead of wiring a scene object. Also covers store-only
+  builds without any ad SDK (for example a Mac App Store free build).
+- `FreemiumGate`: "free up to N, then unlock" rule (`IsPaywalled(index)`, `IsUnlocked`, `RemainingFree`).
+  Ownership comes from the store, `HasPurchasedFallback` (game save) or an optional callback, so it works
+  offline. Plain C#, no scene object.
+
 ## [1.15.1] - 2026-11-01
 
 ### Fixed

@@ -154,6 +154,25 @@ public class GameInitializer : MonoBehaviour
 
 ---
 
+### Freemium unlock ("free up to N levels, then buy")
+
+`IAPBootstrap` builds the helper from your product ids and `FreemiumGate` answers "is this level behind the
+paywall?". Neither needs a scene object, so it works for store-only builds (for example a free Mac App Store
+build with no ad SDK) as well as mobile.
+
+```csharp
+const string Unlock = "mygame_unlockall";
+
+var iap = IAPBootstrap.Ensure(new[] { Unlock });          // prefab in Resources/Monetization/IAPHelper wins
+IAPHelper.HasPurchasedFallback = id => id == Unlock && save.UnlockedGame;   // offline / clean reinstall
+iap.OnEntitlementGranted += id => { save.UnlockedGame = true; save.Save(); };
+
+var gate = new FreemiumGate(Unlock, freeLimit: 15, isUnlocked: () => save.UnlockedGame);
+if (gate.IsPaywalled(level)) ShowUnlockForm();            // keep a visible "Restore Purchases" button on Apple
+```
+
+---
+
 ## In-Game Runtime Debug Panel (`IAPDebugOverlay`)
 
 Testing IAP in sandbox or on physical test tracks can be tedious. `IAPHelper` includes an in-game debug overlay:
