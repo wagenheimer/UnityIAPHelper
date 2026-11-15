@@ -214,6 +214,16 @@ namespace Wagenheimer.IAPHelper
         public event Action<string, string> OnPurchaseUnavailable;
 
         /// <summary>
+        /// Raised with the product id when the player dismisses the payment sheet (nothing failed, nothing charged).
+        /// <see cref="OnPurchaseFailed"/> still fires too, for older callers; new UI should use this one to just
+        /// close its "please wait" state without an error message.
+        /// </summary>
+        public event Action<string> OnPurchaseCancelled;
+
+        /// <summary>Last product id passed to <see cref="Purchase"/>; used to identify a cancelled order that carries no cart.</summary>
+        private static string s_lastRequestedProductId;
+
+        /// <summary>
         /// Fired when an entitlement is revoked by the store (e.g. Apple refund or family sharing cancellation).
         /// </summary>
         public event Action<string> OnEntitlementRevoked;
@@ -878,6 +888,8 @@ namespace Wagenheimer.IAPHelper
 
         public void Purchase(string productId)
         {
+            s_lastRequestedProductId = productId;
+
             if (!IsStoreReady)
             {
                 RejectPurchase(productId, "The store is not ready yet.");
@@ -903,6 +915,66 @@ namespace Wagenheimer.IAPHelper
                 Debug.LogError($"[IAPHelper] Error purchasing product '{productId}': {ex.Message}");
                 OnPurchaseUnavailable?.Invoke(productId, ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Purchases as soon as the store is ready. A tap right after startup, or while the catalog is still loading
+        /// (or stuck), would otherwise fail at once: this waits up to <paramref name="timeoutSeconds"/>, nudging the
+        /// connection / product fetch every few seconds, then falls back to <see cref="OnPurchaseUnavailable"/>.
+        /// Calling it again while already waiting is ignored.
+        /// </summary>
+        public void PurchaseWhenReady(string productId, float timeoutSeconds = 10f)
+        {
+            s_lastRequestedProductId = productId;
+
+            if (IsStoreReady)
+            {
+                Purchase(productId);
+                return;
+            }
+
+            if (_waitingForStore)
+            {
+                Debug.Log($"[IAPHelper] Already waiting for the store; ignoring extra request for '{productId}'.");
+                return;
+            }
+
+            _waitingForStore = true;
+            StartCoroutine(WaitForStoreThenPurchase(productId, timeoutSeconds));
+        }
+
+        private bool _waitingForStore;
+
+        private System.Collections.IEnumerator WaitForStoreThenPurchase(string productId, float timeoutSeconds)
+        {
+            const float kickEverySeconds = 3f;
+            float start = Time.unscaledTime;
+            float nextKick = start + kickEverySeconds;
+            Debug.Log($"[IAPHelper] Store not ready for '{productId}' (init={IsInitialized} connected={IsConnected} products={ProductsLoaded}); waiting up to {timeoutSeconds:0}s.");
+
+            while (!IsStoreReady && Time.unscaledTime - start < timeoutSeconds)
+            {
+                if (Time.unscaledTime >= nextKick)
+                {
+                    nextKick += kickEverySeconds;
+                    Debug.Log($"[IAPHelper] Store still not ready, retrying (init={IsInitialized} connected={IsConnected} products={ProductsLoaded}).");
+                    if (!IsConnected) Initialize();
+                    else if (!ProductsLoaded) FetchProducts();
+                }
+
+                yield return null;
+            }
+
+            _waitingForStore = false;
+
+            if (IsStoreReady)
+            {
+                Debug.Log($"[IAPHelper] Store became ready after {Time.unscaledTime - start:0.0}s; purchasing '{productId}'.");
+                Purchase(productId);
+                yield break;
+            }
+
+            RejectPurchase(productId, $"The store did not become ready within {timeoutSeconds:0}s (connected={IsConnected}, products={ProductsLoaded}).");
         }
 
         private void RejectPurchase(string productId, string reason)
@@ -1213,8 +1285,10 @@ namespace Wagenheimer.IAPHelper
             {
                 // The player closed the payment sheet (or the store cancelled the request). Nothing failed,
                 // nothing was charged: log as information so it never reaches crash reporting as an error.
-                Debug.Log($"[IAPHelper] Purchase cancelled for '{GetOrderProductId(failedOrder)}' ({failedOrder.Details}). No charge was made.");
+                string cancelledId = GetOrderProductId(failedOrder);
+                Debug.Log($"[IAPHelper] Purchase cancelled for '{cancelledId}' ({failedOrder.Details}). No charge was made.");
                 OnPurchaseFailed?.Invoke(failedOrder);
+                OnPurchaseCancelled?.Invoke(cancelledId);
                 Raise(nameof(IAPGlobalEvents.onPurchaseCancelled), () => globalEvents.onPurchaseCancelled?.Invoke());
                 return;
             }
@@ -1740,7 +1814,9 @@ namespace Wagenheimer.IAPHelper
                 return productInfo.productId;
             }
 
-            return "unknown";
+            // A cancelled/failed order often carries no cart (the sheet never reached the store): fall back to
+            // the product the player asked for, so UI waiting on that id is always released.
+            return string.IsNullOrEmpty(s_lastRequestedProductId) ? "unknown" : s_lastRequestedProductId;
         }
 
         #endregion
