@@ -386,6 +386,16 @@ namespace Wagenheimer.IAPHelper
 
         public async void Initialize()
         {
+            // A second helper destroys itself in Awake, but this call can still reach it (an async Initialize on a
+            // dead object connects the shared store controller and then drops its handlers, leaving the real
+            // Instance with a store that is "connected" in the log but never ready). Always drive the live one.
+            if (Instance != null && Instance != this)
+            {
+                Debug.LogWarning($"[IAPHelper#{GetHashCode()}] Initialize() called on a duplicate helper; forwarding to the active instance #{Instance.GetHashCode()}.");
+                Instance.Initialize();
+                return;
+            }
+
             if (IsInitialized)
             {
                 Debug.LogWarning("[IAPHelper] Already initialized.");
@@ -404,7 +414,7 @@ namespace Wagenheimer.IAPHelper
             {
                 await EnsureUnityServicesAsync();
 
-                Debug.Log("[IAPHelper] Initializing StoreController v5...");
+                Debug.Log($"[IAPHelper#{GetHashCode()}] Initializing StoreController v5 (isInstance={Instance == this})...");
 
                 // Reuse the controller: the service is a singleton, and re-initializing (e.g. after a failed
                 // product fetch) must not attach a second set of handlers to it - that made every store
@@ -546,7 +556,7 @@ namespace Wagenheimer.IAPHelper
         {
             IsConnected = true;
             CancelStoreReconnect();
-            Debug.Log("[IAPHelper] Connected to the store successfully.");
+            Debug.Log($"[IAPHelper#{GetHashCode()}] Connected to the store successfully.");
 
             FetchProducts();
 
